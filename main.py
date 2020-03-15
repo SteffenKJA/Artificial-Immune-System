@@ -1,6 +1,50 @@
 """
-Implementation of AIRS2 (Artificial Immune Recognition System V2) applied to the IRIS data set
-@author : Azzoug Aghiles
+Implementation of AIRS2 (Artificial Immune Recognition System V2), first
+applied to the IRIS data set by: Azzoug Aghiles
+
+Forked and modified by Steffen Kjær Jacobsen to handle general dataframe
+inputs, not only IRUS dataset.
+
+Log by SKJAC:
+    - Optimized affinity threshold calculation, was previously brute-force.
+
+
+Terms:
+(Affinity threshold)
+Antigenic recognition is the first pre-requisite for the immune system to be activated
+and to mount an immune response. The recognition has to satisfy some criteria. First,
+the cell receptor recognises an antigen with a certain affinity, and a binding between the
+receptor and the antigen occurs with strength proportional to this affinity. If the affinity
+is greater than a given threshold, named affinity threshold, then the immune system is
+activated. The nature of antigen, type of recognising cell, and the recognition site also
+influence the outcome of an encounter between an antigen and a cell receptor.
+
+- Affinity threshold is where the affinity between an incoming foreign cell
+an the immune cell is high enough to activate the immune system and select
+the immune cell for multiplication to identify the foreign, invading cells.
+
+
+Glossary:
+    - Affinity is the distance between two cells. In code, it is the 
+    (Normalized!! distance) between two features vectors.
+    - Affinity threshold of the memory cells - this is this treshold where the
+    immune system is activated.
+
+    MC: Memory Cells
+    AB: Antibodies
+
+
+Parameters:
+    
+    AFFINITY_THRESHOLD_SCALAR: The scalar value which modifies the affinity
+                               threshold.
+    MUTATION_RATE: The fraction of input vector elements who will be assigned
+    a new random value.
+    
+    mc_init_rate: Fraction of memory cells relative to the input training
+                  set number of cells (number of rows).
+
+@authors: Steffen Kjær Jacobsen and Azzoug Aghiles.
 """
 
 import random
@@ -10,38 +54,171 @@ from sklearn import preprocessing
 import pandas as pd
 from scipy.spatial.distance import pdist
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+#import pandas_profiling
 
+sns.set_style('darkgrid')
+
+class ARB:
+    """ARB (Artificial Recognition Ball) class
+    Args:
+        vector (list) : list of features
+        _class (integer) : the class of the previous features
+    """
+
+    def __init__(self, vector=None, _class=None):
+        if vector is None:
+            self.vector = [random.random() for _ in range(ARRAY_SIZE)]
+        else:
+            self.vector = vector
+        self._class = _class
+        self.stimulation = float('inf')
+        self.resources = 0
+
+    def __str__(self):
+        return "ARB : Vector = {} | class = {} | stim = {} | res = {}".format(self.vector, self._class,
+                                                                              self.stimulation, self.resources)
+
+    def __repr__(self):
+        return "ARB : Vector = {} | class = {} | stim = {} | res = {}".format(self.vector, self._class,
+                                                                              self.stimulation, self.resources)
+
+    def stimulate(self, pattern):
+        """
+        Stimulation of the ARB is inversely proportional with the affinity of
+        the cell. Affinity ranges from [0;1] so stimulation ranges from 
+        [1;0] due to start value of stim of 1.
+        
+        Parameters
+        ----------
+        pattern : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        self.stimulation: float
+            Stimulation value of the cell.
+
+        """
+        
+        self.stimulation = 1 - AIRS.affinity(vector1=pattern,
+                                             vector2=self.vector)
+        return self.stimulation
+
+    def _mutate(self):
+        """
+        For each element in vector, assign a random number in the range
+        [0.1, 7.1], if the random 'change' value is below MUTATION_RATE.
+        
+        Returns
+        -------
+        ARB: ARB instance
+            A new ARB instance with a new vector with either the same
+            value in element, or new mutated value.
+        mutated: bool
+            Informs us if any mutated vector elements were returned.
+        """
+
+        # _range = 1 - self.stimulation
+        mutated = False
+        new_vector = []
+
+        for v in self.vector:
+            change = random.random()
+            change_to = 7 * random.random() + 0.1
+
+            if change <= AIRS.MUTATION_RATE:
+                new_vector.append(change_to)
+                mutated = True
+            else:
+                new_vector.append(v)
+
+        return ARB(vector=new_vector, _class=self._class), mutated
+
+
+class Cell:
+    """Cell class
+    Args:
+        vector (list) : list of features
+        _class (integer) : the class of the previous features
+    """
+
+    def __init__(self, vector=None, _class=None):
+        if vector is None:
+            self.vector = [random.random() for _ in range(ARRAY_SIZE)]
+        else:
+            self.vector = vector
+        self._class = _class
+        self.stimulation = float('inf')
+
+    def __str__(self):
+        return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
+
+    def __repr__(self):
+        return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
+
+    def stimulate(self, pattern):
+        self.stimulation = 1 - AIRS.affinity(vector1=pattern, vector2=self.vector)
+        return self.stimulation
+
+    def _mutate(self):
+        #_range = 1 - self.stimulation
+        mutated = False
+        new_vector = []
+
+        for v in self.vector:
+            change = random.random()
+            change_to = random.random()
+
+            if change <= MUTATION_RATE:
+                new_vector.append(change_to)
+                mutated = True
+            else:
+                new_vector.append(v)
+
+        return ARB(vector=new_vector, _class=self._class), mutated
 
 class AIRS:
     """AIRS (Artificial Immune Recognition System) class
     Main class for this algorithm
-    Params:
-        hyper_clonal_rate (float) : Define the number of clones an ARB is allowed to produce
-        clonal_rate (float) : Define the number of ressources an ARB can obtain
-        class_number (int) : The number of classes (3 in this case)
-        mc_init_rate (float) : Define the number of training data to be copied in memory cells
-        total_num_resources (float) : The total numbers of resources to share between ARBs
-        affinity_threshold_scalar  (float) : Give a cut-off value for cell replacement
-        k (int) : The number of memory cells to use for classification
-        test_size (float) : The percentage of global data to take as test data
-
+    
     This implementation uses negative selection and clonal selection to imitate
     B-Cells in the human immune system.
     
-    Optimizations:
-        - Calculation of distance to all neighbors must be reordered into a 
-        more effective knn algorithm, horribly slow at the moment.
-    Glossary
-    ---------------------------------------------------------------------------
-    
-    MC: Memory Cells
-    
+    Parameters
+    ------------------
+    hyper_clonal_rate: float
+        Define the number of clones an ARB is allowed to produce
+    clonal_rate: float
+        Define the number of ressources an ARB can obtain.
+    class_number: int
+        The number of classes (2 for fraud detection)
+    mc_init_rate: float
+        Define the number of training data to be copied in memory cells
+    total_num_resources: float
+        The total numbers of resources to share between ARBs
+    affinity_threshold_scalar: float
+        Give a cut-off value for cell replacement
+    k: int
+        The number of memory cells to use for classification
+    test_size: float
+        The percentage of global data to take as test data
     """
 
-    def __init__(self, hyper_clonal_rate, clonal_rate, class_number,
-                 mc_init_rate, total_num_resources, affinity_threshold_scalar,
-                 k, test_size, create_test_train_set=True, train_set=None,
-                 test_set=None, input_data_file=None, data=None):
+    def __init__(self,
+                 hyper_clonal_rate,
+                 clonal_rate,
+                 class_number,
+                 mc_init_rate,
+                 total_num_resources,
+                 affinity_threshold_scalar,
+                 k,
+                 test_size,
+                 create_test_train_set=True,
+                 train_set=None,
+                 test_set=None,
+                 data=None):
         
         self.HYPER_CLONAL_RATE = hyper_clonal_rate
         self.CLONAL_RATE = clonal_rate
@@ -54,7 +231,6 @@ class AIRS:
         self.K = k
         self.MC = None
         self.AB = None
-        self.input_data_file = input_data_file
         self.data = data
 
         if create_test_train_set:
@@ -65,29 +241,43 @@ class AIRS:
         
 
     @staticmethod
-    def affinity(vector1, vector2):
-        """Compute the affinity (Normalized !! distance) between two features vectors
-        :param vector1: First features vector
-        :param vector2: Second features vector
-        :return: The affinity between the two vectors [0-1]
+    def affinity(vector1, vector2, brute_force=False):
         """
+        Compute the affinity (Normalized!! distance) between two features
+        vectors.
         
-        #euclidian_distance = 0
-        #d = 0
+        Parameters
+        --------------
+        vector1: list
+            First features vector
+        vector2: list
+            Second features vector
         
-        dist = np.linalg.norm(vector1 - vector2)
-        
-        #for i, j in zip(vector1, vector2):
-        #    d += (i - j) ** 2
-        #euclidian_distance = math.sqrt(d)
-        #return euclidian_distance / (1 + euclidian_distance)
-        
-        return dist/(1 + dist)
+        Returns
+        --------------
+            The affinity between the two vectors [0-1]
+        """
+
+        if brute_force:
+            import math
+            euclidian_distance = 0
+            d = 0
+
+            for i, j in zip(vector1, vector2):
+                d += (i - j)**2
+            euclidian_distance = math.sqrt(d)
+
+            return euclidian_distance / (1 + euclidian_distance)
+        else:
+            dist = np.sqrt((np.square(vector1 - vector2).sum()))
+           # dist = np.linalg.norm(vector1 - vector2)
+            
+            return dist/(1 + dist)
     
     
     def train_test_split(self, open_file=True):
         
-        df = self.data #pd.read_csv(self.input_data_file)
+        df = self.data
 
         y = df.iloc[:, -1]
         X = df.iloc[:, :-1]
@@ -100,29 +290,6 @@ class AIRS:
         test_set = pd.concat([X_test, y_test], axis=1)
 
         return train_set[:20000], test_set[:6660]
-
-       # if open_file:
-       #     with open(self.input_data_file, "r") as data:
-       #         content = data.readlines()
-       #         ret = [([float(x.split(",")[i]) for i in range(4)],
-       #                  mapping[x.split(",")[4][:-1]]) for x in content]
-       #         random.shuffle(ret)
-       #     return ret[:int((1 - self.TEST_SIZE) * len(ret))], ret[int((1 - self.TEST_SIZE) * len(ret)):]
-        
-       # else:
-            
-       #     y = self.data[:, -1]
-       #     X = self.data[:, :-1]
-
-       #     X_train, X_test, y_train, y_test = train_test_split(X, y,
-       #                                                         test_size=0.33,
-       #                                                         random_state=42)
-            
-       #     train_set = pd.concat(X_train, y_train, axis=1)
-       #     test_set = pd.concat(X_test, y_test, axis=1)
-
-       #     return train_set, test_set
-
 
 
     def calculate_affinity_threshold(self, use_brute_force=False):
@@ -144,12 +311,13 @@ class AIRS:
             self.AFFINITY_THRESHOLD = affinity_threshold / (len(self.train_set) * (len(self.train_set) - 1) / 2)
         else:
             
-            # Affinity threshold should be normalized
+            # Affinity threshold must be calculated from a normalized
+            # dataframes.
             x = self.train_set.iloc[:, :-1].values  # returns a numpy array
             min_max_scaler = preprocessing.MinMaxScaler()
             x_scaled = min_max_scaler.fit_transform(x)
             df = pd.DataFrame(x_scaled)
- 
+
             self.AFFINITY_THRESHOLD = np.mean(pdist(df.values))
             
 #            self.AFFINITY_THRESHOLD = np.mean(pdist(self.train_set.iloc[:, :-1].values))
@@ -158,16 +326,31 @@ class AIRS:
 
 
     def init_MC(self, MC):
-        """ Init the memory set pool
-        :param train_set: the training set
-        :param MC: The memory set pool
+        """
+        Initialize the memory set pool
+        
+        Parameters
+        -----------------
+        train_set: dataframe
+            The training set
+        MC:
+            The memory set pool
+            
+        Returns
+        -----------------
+        None
         """
         print("Initiating memory set pool..")
-        for _ in range(int(len(self.train_set) * self.MC_INIT_RATE)):
+        for _ in range(int(self.train_set.shape[0] * self.MC_INIT_RATE)):
+            # Choose a random row from the train set. Same value can 
+            # chosen multiple times in this loop.
             seed_cell = random.choice(self.train_set.values)
-          #  print("seed", seed_cell)
-          #  print("MC", MC)
-          #  print("CELL", Cell(vector=seed_cell[0], _class=seed_cell[-1]))
+            
+            # Create a memory cell and append it to the MC dictionary in the 
+            # Correct class list., i.e., sort input memory cells into fraud
+            # and nonfraud cells.
+            
+            # seed_cell[-1] is the class. Append Cell instance
             MC[int(seed_cell[-1])].append(Cell(vector=seed_cell[0], _class=seed_cell[-1]))
 
     def argminARB(self, AB, _class):
@@ -209,23 +392,56 @@ class AIRS:
         c.stimulation = ab.stimulation
         return c
 
+    def classify(self, antigene):
+        if (self.MC is None) or (self.AB is None):
+            raise Exception("AIRS must be trained first")
+
+        vote_array = []
+        for c in self.MC.keys():
+            for ab in self.MC.get(c):
+                ab.stimulate(antigene)
+                vote_array.append(ab)
+
+        vote_array = list(sorted(vote_array, key=lambda cell: -cell.stimulation))
+        v = {0: 0, 1: 0}
+        self.K = min(self.K, len(vote_array))
+        for x in vote_array[:self.K]:
+            v[x._class] += 1
+
+        maxVote = 0
+        _class = 0
+        for x in v.keys():
+            if v[x] > maxVote:
+                maxVote = v[x]
+                _class = x
+        return reverseMapping[_class]
+
     def train(self):
         """Train AIRS on the training dataset"""
         start = time.time()
 
         # Calculate the affinity threshold of the memory cells
         self.calculate_affinity_threshold()
+        # The actual affinity threshold is modified by the input value,
+        # AFFINITY_THRESHOLD_SCALAR
+        self.AFFINITY_THRESHOLD_SCALED = self.AFFINITY_THRESHOLD * self.AFFINITY_THRESHOLD_SCALAR
+        
+        # Create two dicts for the Memory Cells and Antibodies, with two
+        # empty class slots, nonfraud and fraud, labelled 0 and 1.
         MC = {_class: [] for _class in range(self.CLASS_NUMBER)}
         AB = {_class: [] for _class in range(self.CLASS_NUMBER)}
 
         # MC Initialisation
         self.init_MC(MC)
-#        print(self.train_set.iloc[:, :-1].values)
+
         for row in self.train_set.values:
+            
+            # Split into featureset (antigene) and target (class)
             antigene, _class = row[:-1], row[-1]
             # MC Identification
             mc_match = None
             if len(MC[_class]) == 0:
+                # If this is the first row in dataset
                 mc_match = Cell(vector=antigene, _class=_class)
                 MC[_class].append(mc_match)
             else:
@@ -245,7 +461,7 @@ class AIRS:
                 MAX_CLONES = int(self.HYPER_CLONAL_RATE * self.CLONAL_RATE * stim)
                 num_clones = 0
                 while num_clones < MAX_CLONES:
-                    clone, mutated = mc_match.mutate()
+                    clone, mutated = mc_match._mutate()
 
                     if mutated:
                         AB[_class].append(clone)
@@ -297,7 +513,7 @@ class AIRS:
 
             if mc_candidate.stimulation > mc_match.stimulation:
                 if AIRS.affinity(mc_candidate.vector,
-                                 mc_match.vector) < self.AFFINITY_THRESHOLD * self.AFFINITY_THRESHOLD_SCALAR:
+                                 mc_match.vector) < self.AFFINITY_THRESHOLD_SCALED:
                     # The mc candidate replaces the mc match
                     MC[_class].remove(mc_match)
                 # Add the mc_match to MC pool
@@ -307,7 +523,7 @@ class AIRS:
         self.AB = AB
 
         n_correct = 0
-        
+
         for row in self.test_set.values:
             ag = row[:-1]
             _class = row[-1]
@@ -315,164 +531,35 @@ class AIRS:
                 n_correct += 1
         #for ag, _class in (self.test_set.iloc[:, :-1], self.test_set.iloc[:, -1]):
 
-
         print("Execution time : {:2.4f} seconds".format(time.time() - start))
-        print("Accuracy : {:2.2f} %".format(n_correct * 100 / len(self.test_set)))
+        print("Accuracy : {:2.2f} %".format(n_correct * 100 / self.test_set.shape[0]))
+        print(f"Nonfraud fract : {sum(self.test_set.iloc[:, -1] == 0) / self.test_set.shape[0] * 100:.2f} %")
+        print(f"Fraud fract : {sum(self.test_set.iloc[:, -1] == 1) / self.test_set.shape[0] * 100:.2f} %")
+
         return n_correct / len(self.test_set)
-
-    def classify(self, antigene):
-        if (self.MC is None) or (self.AB is None):
-            raise Exception("AIRS must be trained first")
-
-        vote_array = []
-        for c in self.MC.keys():
-            for ab in self.MC.get(c):
-                ab.stimulate(antigene)
-                vote_array.append(ab)
-
-        vote_array = list(sorted(vote_array, key=lambda cell: -cell.stimulation))
-        v = {0: 0, 1: 0, 2: 0}
-        self.K = min(self.K, len(vote_array))
-        for x in vote_array[:self.K]:
-            v[x._class] += 1
-
-        maxVote = 0
-        _class = 0
-        for x in v.keys():
-            if v[x] > maxVote:
-                maxVote = v[x]
-                _class = x
-        return reverseMapping[_class]
-
-
-class ARB:
-    """ARB (Artificial Recognition Ball) class
-    Args:
-        vector (list) : list of features
-        _class (integer) : the class of the previous features
-    """
-
-    def __init__(self, vector=None, _class=None):
-        if vector is None:
-            self.vector = [random.random() for _ in range(ARRAY_SIZE)]
-        else:
-            self.vector = vector
-        self._class = _class
-        self.stimulation = float('inf')
-        self.resources = 0
-
-    def __str__(self):
-        return "ARB : Vector = {} | class = {} | stim = {} | res = {}".format(self.vector, self._class,
-                                                                              self.stimulation, self.resources)
-
-    def __repr__(self):
-        return "ARB : Vector = {} | class = {} | stim = {} | res = {}".format(self.vector, self._class,
-                                                                              self.stimulation, self.resources)
-
-    def stimulate(self, pattern):
-        """
-        Stimulation of the ARB is inversely proportional with the affinity of
-        the cell. Affinity ranges from [0;1] so stimulation ranges from 
-        [1;0] due to start value of stim of 1.
-        
-        Parameters
-        ----------
-        pattern : TYPE
-            DESCRIPTION.
-
-        Returns
-        -------
-        self.stimulation: float
-            Stimulation value of the cell.
-
-        """
-        
-        self.stimulation = 1 - AIRS.affinity(vector1=pattern, vector2=self.vector)
-        return self.stimulation
-
-    def mutate(self):
-        # _range = 1 - self.stimulation
-        mutated = False
-        new_vector = []
-
-        for v in self.vector:
-            change = random.random()
-            change_to = 7 * random.random() + 0.1
-
-            if change <= AIRS.MUTATION_RATE:
-                new_vector.append(change_to)
-                mutated = True
-            else:
-                new_vector.append(v)
-
-        return ARB(vector=new_vector, _class=self._class), mutated
-
-
-class Cell:
-    """Cell class
-    Args:
-        vector (list) : list of features
-        _class (integer) : the class of the previous features
-    """
-
-    def __init__(self, vector=None, _class=None):
-        if vector is None:
-            self.vector = [random.random() for _ in range(ARRAY_SIZE)]
-        else:
-            self.vector = vector
-        self._class = _class
-        self.stimulation = float('inf')
-
-    def __str__(self):
-        return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
-
-    def __repr__(self):
-        return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
-
-    def stimulate(self, pattern):
-        self.stimulation = 1 - AIRS.affinity(vector1=pattern, vector2=self.vector)
-        return self.stimulation
-
-    def mutate(self):
-        _range = 1 - self.stimulation
-        mutated = False
-        new_vector = []
-
-        for v in self.vector:
-            change = random.random()
-            change_to = random.random()
-
-            if change <= MUTATION_RATE:
-                new_vector.append(change_to)
-                mutated = True
-            else:
-                new_vector.append(v)
-
-        return ARB(vector=new_vector, _class=self._class), mutated
 
 
 if __name__ == '__main__':
 
     # =========================================================================
-    # USE-CASE EXAMPLE ON IRIS DATASET
+    # USE-CASE CREDIT CARD FRAUD
     # =========================================================================
 
-    ARRAY_SIZE = 4  # Features number
+    ARRAY_SIZE = 30  # Features number
     MAX_ITER = 5  # Max iterations to stop training on a given antigene
 
     # Mapping classes to integers
-    mapping = {"Iris-setosa": 0, "Iris-versicolor": 1, "Iris-virginica": 2}
-    reverseMapping = {0: "Iris-setosa", 1: "Iris-versicolor",
-                      2: "Iris-virginica"}
+    mapping = {"Nonfraud": 0, "Fraud": 1}
+    reverseMapping = {0: "Nonfraud",
+                      1: "Fraud"}
 
     # Mutation rate for ARBs
     MUTATION_RATE = 0.2
-    
-    data = pd.read_csv('data/creditcard.csv')
-    
+
+    data = pd.read_csv('data/creditcard.csv', nrows=1000)
     # Very low nr of fraud cases, upsample cases.
     data = data.append([data[data.loc[:, 'Class']==1]]*100, ignore_index=True)
-    
+
     airs = AIRS(hyper_clonal_rate=20,
                 clonal_rate=0.8,
                 class_number=2,
