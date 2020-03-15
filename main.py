@@ -51,6 +51,7 @@ import random
 import time
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
+from sklearn.metrics import confusion_matrix
 import pandas as pd
 from scipy.spatial.distance import pdist
 import numpy as np
@@ -145,11 +146,13 @@ class Cell:
     """
 
     def __init__(self, vector=None, _class=None):
-        if vector is None:
-            self.vector = [random.random() for _ in range(ARRAY_SIZE)]
-        else:
-            self.vector = vector
-        self._class = _class
+        
+        assert vector is not None, 'Cannot create cell with no features'
+        #    self.vector = [random.random() for _ in range(ARRAY_SIZE)]
+        #else:
+
+        self.vector = vector  # Vector containing all cell features.
+        self._class = _class  # Cell class 
         self.stimulation = float('inf')
 
     def __str__(self):
@@ -159,6 +162,21 @@ class Cell:
         return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
 
     def stimulate(self, pattern):
+        """
+        The higher the affinity, the lower the stimulation.
+
+        Parameters
+        ----------
+        pattern : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+
+        """
+        
         self.stimulation = 1 - AIRS.affinity(vector1=pattern, vector2=self.vector)
         return self.stimulation
 
@@ -238,6 +256,9 @@ class AIRS:
         else:
             self.train_set = train_set
             self.test_set = test_set
+        
+        self.train_set = self.train_set.append([self.train_set[self.train_set.loc[:, 'Class']==1]]*100, ignore_index=True)
+
         
 
     @staticmethod
@@ -340,7 +361,9 @@ class AIRS:
         -----------------
         None
         """
+
         print("Initiating memory set pool..")
+
         for _ in range(int(self.train_set.shape[0] * self.MC_INIT_RATE)):
             # Choose a random row from the train set. Same value can 
             # chosen multiple times in this loop.
@@ -350,8 +373,11 @@ class AIRS:
             # Correct class list., i.e., sort input memory cells into fraud
             # and nonfraud cells.
             
-            # seed_cell[-1] is the class. Append Cell instance
-            MC[int(seed_cell[-1])].append(Cell(vector=seed_cell[0], _class=seed_cell[-1]))
+            # seed_cell[-1] is the class. Append Cell instance with all
+            # features.
+
+            MC[int(seed_cell[-1])].append(Cell(vector=seed_cell[0:-1],
+                                               _class=seed_cell[-1]))
 
     def argminARB(self, AB, _class):
         """Get the ARB with the minimum amount of resources
@@ -414,7 +440,7 @@ class AIRS:
             if v[x] > maxVote:
                 maxVote = v[x]
                 _class = x
-        return reverseMapping[_class]
+        return _class
 
     def train(self):
         """Train AIRS on the training dataset"""
@@ -512,8 +538,8 @@ class AIRS:
             mc_candidate = self.getMcCandidate(AB=AB, _class=_class)
 
             if mc_candidate.stimulation > mc_match.stimulation:
-                if AIRS.affinity(mc_candidate.vector,
-                                 mc_match.vector) < self.AFFINITY_THRESHOLD_SCALED:
+                if AIRS.affinity(np.array(mc_candidate.vector),
+                                 np.array(mc_match.vector)) < self.AFFINITY_THRESHOLD_SCALED:
                     # The mc candidate replaces the mc match
                     MC[_class].remove(mc_match)
                 # Add the mc_match to MC pool
@@ -523,19 +549,25 @@ class AIRS:
         self.AB = AB
 
         n_correct = 0
+        
+        df_pred = pd.DataFrame({})
 
-        for row in self.test_set.values:
-            ag = row[:-1]
-            _class = row[-1]
-            if self.classify(ag) == reverseMapping[_class]:
-                n_correct += 1
+        df_pred['y_pred'] = [self.classify(x) for x in self.test_set.iloc[:, :-1].values] 
+        df_pred['y_true'] = self.test_set.iloc[:, -1].values
+        n_correct = sum(df_pred.y_pred == df_pred.y_true)
+
+        #for row in self.test_set.values:
+        #    ag = row[:-1]
+        #    _class = row[-1]
+        #    if self.classify(ag) == reverseMapping[_class]:
+        #        n_correct += 1
         #for ag, _class in (self.test_set.iloc[:, :-1], self.test_set.iloc[:, -1]):
 
         print("Execution time : {:2.4f} seconds".format(time.time() - start))
         print("Accuracy : {:2.2f} %".format(n_correct * 100 / self.test_set.shape[0]))
         print(f"Nonfraud fract : {sum(self.test_set.iloc[:, -1] == 0) / self.test_set.shape[0] * 100:.2f} %")
         print(f"Fraud fract : {sum(self.test_set.iloc[:, -1] == 1) / self.test_set.shape[0] * 100:.2f} %")
-
+        print(f"Confusion matrix is {confusion_matrix(df_pred.y_true, df_pred.y_pred)}")
         return n_correct / len(self.test_set)
 
 
@@ -556,9 +588,9 @@ if __name__ == '__main__':
     # Mutation rate for ARBs
     MUTATION_RATE = 0.2
 
-    data = pd.read_csv('data/creditcard.csv', nrows=1000)
+    data = pd.read_csv('data/creditcard.csv', nrows=10000)
+
     # Very low nr of fraud cases, upsample cases.
-    data = data.append([data[data.loc[:, 'Class']==1]]*100, ignore_index=True)
 
     airs = AIRS(hyper_clonal_rate=20,
                 clonal_rate=0.8,
