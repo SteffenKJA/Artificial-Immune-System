@@ -55,11 +55,10 @@ from sklearn.metrics import confusion_matrix
 import pandas as pd
 from scipy.spatial.distance import pdist
 import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
+import tinyarray as ta
+
 #import pandas_profiling
 
-sns.set_style('darkgrid')
 
 class ARB:
     """ARB (Artificial Recognition Ball) class
@@ -72,7 +71,7 @@ class ARB:
         if vector is None:
             self.vector = [random.random() for _ in range(ARRAY_SIZE)]
         else:
-            self.vector = vector
+            self.vector = ta.array(vector)
         self._class = _class
         self.stimulation = float('inf')
         self.resources = 0
@@ -151,7 +150,7 @@ class Cell:
         #    self.vector = [random.random() for _ in range(ARRAY_SIZE)]
         #else:
 
-        self.vector = vector  # Vector containing all cell features.
+        self.vector = ta.array(vector)  # Vector containing all cell features.
         self._class = _class  # Cell class 
         self.stimulation = float('inf')
 
@@ -252,14 +251,13 @@ class AIRS:
         self.data = data
 
         if create_test_train_set:
-            self.train_set, self.test_set = self.train_test_split()
+            self.train_set, self.test_set = self._train_test_split()
         else:
             self.train_set = train_set
             self.test_set = test_set
         
         self.train_set = self.train_set.append([self.train_set[self.train_set.loc[:, 'Class']==1]]*100, ignore_index=True)
 
-        
 
     @staticmethod
     def affinity(vector1, vector2, brute_force=False):
@@ -290,13 +288,22 @@ class AIRS:
 
             return euclidian_distance / (1 + euclidian_distance)
         else:
-            dist = np.sqrt((np.square(vector1 - vector2).sum()))
+#            dist = np.sqrt((np.square(vector1 - vector2).sum()))
+            #vector1 = ta.array(vector1)
+            #vector2 = ta.array(vector2)
+            #assert type(vector1) in (ta.ndarray_int, ta.ndarray_float), type(vector1)
+            #assert type(vector2) in (ta.ndarray_int, ta.ndarray_float), type(vector2)
+            #print(vector1)
+            #print(vector2)
+            #dist = (vector1 - vector2)**2.0
+            dist = (np.square(vector1 - vector2).sum())**0.5
+            #dist = sum([(x-y)**2.0 for x, y in zip(vector1, vector2)])**0.5
            # dist = np.linalg.norm(vector1 - vector2)
             
             return dist/(1 + dist)
     
     
-    def train_test_split(self, open_file=True):
+    def _train_test_split(self, open_file=True):
         
         df = self.data
 
@@ -463,7 +470,7 @@ class AIRS:
         for row in self.train_set.values:
             
             # Split into featureset (antigene) and target (class)
-            antigene, _class = row[:-1], row[-1]
+            antigene, _class = ta.array(row[:-1]), row[-1]
             # MC Identification
             mc_match = None
             if len(MC[_class]) == 0:
@@ -479,7 +486,7 @@ class AIRS:
 
             # ARB Generation
             AB[_class].append(ARB(vector=mc_match.vector, _class=mc_match._class))  # add the mc_match to ARBs
-            stim = mc_match.stimulate(antigene)
+            stim = mc_match.stimulate(ta.array(antigene))
 
             iterations = 0
             while True:
@@ -494,7 +501,9 @@ class AIRS:
                         num_clones += 1
 
                 # Competition for resources
+    
                 avgStim = sum([x.stimulate(antigene) for x in AB[_class]]) / len(AB[_class])
+             #   avgStim = [*map(np.sum, [[x.stimulate(antigene) for x in AB[_class]]])][0] / len(AB[_class])
 
                 MIN_STIM = 1.0
                 MAX_STIM = 0.0
@@ -511,7 +520,7 @@ class AIRS:
                             MAX_STIM = stim
 
                 if MIN_STIM == MAX_STIM:
-                    print(f"OBS! 0<stim({stim})<1, keeping MIN_STEM and MAX_STEM at default values")
+                 #   print(f"OBS! 0<stim({stim})<1, keeping MIN_STEM and MAX_STEM at default values")
                     MIN_STIM = 1.0
                     MAX_STIM = 0.0                    
 
@@ -519,8 +528,10 @@ class AIRS:
                     for ab in AB.get(c):
                         ab.stimulation = (ab.stimulation - MIN_STIM) / (MAX_STIM - MIN_STIM)
                         ab.resources = ab.stimulation * self.CLONAL_RATE
-
+                
+                #print([x.resources for x in AB[_class]])
                 resAlloc = sum([x.resources for x in AB[_class]])
+                #resAlloc = [*map(np.sum, [[x.resources for x in AB[_class]]])][0]
                 numResAllowed = self.TOTAL_NUM_RESOURCES
                 while resAlloc > numResAllowed:
                     numResRemove = resAlloc - numResAllowed
@@ -538,8 +549,8 @@ class AIRS:
             mc_candidate = self.getMcCandidate(AB=AB, _class=_class)
 
             if mc_candidate.stimulation > mc_match.stimulation:
-                if AIRS.affinity(np.array(mc_candidate.vector),
-                                 np.array(mc_match.vector)) < self.AFFINITY_THRESHOLD_SCALED:
+                if AIRS.affinity(mc_candidate.vector,
+                                 mc_match.vector) < self.AFFINITY_THRESHOLD_SCALED:
                     # The mc candidate replaces the mc match
                     MC[_class].remove(mc_match)
                 # Add the mc_match to MC pool
@@ -552,9 +563,12 @@ class AIRS:
         
         df_pred = pd.DataFrame({})
 
-        df_pred['y_pred'] = [self.classify(x) for x in self.test_set.iloc[:, :-1].values] 
+#        df_pred['y_pred'] = [self.classify(ta.array(x)) for x in self.test_set.iloc[:, :-1].values]
+        #print(*map(ta.array, self.test_set.iloc[:, :-1].values))
+        df_pred['y_pred'] = [*map(self.classify, [*map(ta.array, self.test_set.iloc[:, :-1].values)])]
         df_pred['y_true'] = self.test_set.iloc[:, -1].values
-        n_correct = sum(df_pred.y_pred == df_pred.y_true)
+        n_correct = [*map(np.sum, [df_pred.y_pred == df_pred.y_true])][0]
+        #n_correct = np.sum([df_pred.y_pred == df_pred.y_true])
 
         #for row in self.test_set.values:
         #    ag = row[:-1]
@@ -579,11 +593,6 @@ if __name__ == '__main__':
 
     ARRAY_SIZE = 30  # Features number
     MAX_ITER = 5  # Max iterations to stop training on a given antigene
-
-    # Mapping classes to integers
-    mapping = {"Nonfraud": 0, "Fraud": 1}
-    reverseMapping = {0: "Nonfraud",
-                      1: "Fraud"}
 
     # Mutation rate for ARBs
     MUTATION_RATE = 0.2
