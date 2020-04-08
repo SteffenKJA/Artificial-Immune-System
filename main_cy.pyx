@@ -57,14 +57,35 @@ from scipy.spatial.distance import pdist
 import numpy as np
 import tinyarray as ta
 import os
-#os.system('python setup.py build_ext --inplace')
-from func import cy_affinity
-import multiprocessing
+os.system('python setup.py build_ext --inplace')
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import numpy as np
+# "cimport" is used to import special compile-time information
+# about the numpy module (this is stored in a file numpy.pxd which is
+# currently part of the Cython distribution).
+cimport numpy as np
+# =============================================================================
+# DTYPE_int = np.int
+# # "ctypedef" assigns a corresponding compile-time type to DTYPE_t. For
+# # every type in the numpy module there's a corresponding compile-time
+# # type with a _t-suffix.
+# ctypedef np.int_t DTYPE_t
+# =============================================================================
+
+DTYPE = np.float32
+ctypedef np.float32_t DTYPE_t
+
 
 # Substitute AIRS.affinity with cy_affinity
 
 #import pandas_profiling
+cdef int ARRAY_SIZE = 30  # Features number
+cdef int MAX_ITER = 10  # Max iterations to stop training on a given antigene
 
+# Mutation rate for ARBs
+cdef float MUTATION_RATE = 0.2
 
 class ARB:
     """ARB (Artificial Recognition Ball) class
@@ -108,7 +129,7 @@ class ARB:
 
         """
         
-        self.stimulation = 1 - cy_affinity(vector1=pattern,
+        self.stimulation = 1 - AIRS.affinity(vector1=pattern,
                                              vector2=self.vector)
         return self.stimulation
 
@@ -182,7 +203,7 @@ class Cell:
 
         """
         
-        self.stimulation = 1 - cy_affinity(vector1=pattern, vector2=self.vector)
+        self.stimulation = 1 - AIRS.affinity(vector1=pattern, vector2=self.vector)
         return self.stimulation
 
     def _mutate(self):
@@ -230,17 +251,17 @@ class AIRS:
     """
 
     def __init__(self,
-                 hyper_clonal_rate,
-                 clonal_rate,
-                 class_number,
-                 mc_init_rate,
-                 total_num_resources,
-                 affinity_threshold_scalar,
-                 k,
-                 test_size,
+                 float hyper_clonal_rate,
+                 float clonal_rate,
+                 int class_number,
+                 float mc_init_rate, 
+                 float total_num_resources,
+                 float affinity_threshold_scalar,
+                 int k,
+                 float test_size,
                  create_test_train_set=True,
-                 train_set=None,
-                 test_set=None,
+                 train_set=pd.DataFrame({}),
+                 test_set=pd.DataFrame({}),
                  data=None):
         
         self.HYPER_CLONAL_RATE = hyper_clonal_rate
@@ -255,18 +276,17 @@ class AIRS:
         self.MC = None
         self.AB = None
         self.data = data
-
         if create_test_train_set:
             self.train_set, self.test_set = self._train_test_split()
         else:
             self.train_set = train_set
             self.test_set = test_set
+            
+        self.train_set = self.train_set.append([self.train_set[self.train_set.loc[:, 'Class']==1]]*100, ignore_index=True)
+
+
+    def affinity(self, vector1, vector2):
         
-        self.train_set = self.train_set.append([self.train_set[self.train_set.loc[:, 'Class']==1]]*10, ignore_index=True)
-
-
-    @staticmethod
-    def affinity(vector1, vector2, brute_force=False):
         """
         Compute the affinity (Normalized!! distance) between two features
         vectors.
@@ -282,59 +302,37 @@ class AIRS:
         --------------
             The affinity between the two vectors [0-1]
         """
-
-        if brute_force:
-            import math
-            euclidian_distance = 0
-            d = 0
-
-            for i, j in zip(vector1, vector2):
-                d += (i - j)**2
-            euclidian_distance = math.sqrt(d)
-
-            return euclidian_distance / (1 + euclidian_distance)
-        else:
-#            dist = np.sqrt((np.square(vector1 - vector2).sum()))
-            #vector1 = np.array(vector1)
-            #vector2 = np.array(vector2)
-            #assert type(vector1) in (np.ndarray_int, np.ndarray_float), type(vector1)
-            #assert type(vector2) in (np.ndarray_int, np.ndarray_float), type(vector2)
-            #print(vector1)
-            #print(vector2)
-            #dist = (vector1 - vector2)**2.0
-           # dist = (np.square(vector1 - vector2).sum())**0.5
-            
-            dist = pdist(ta.array((vector1, vector2)))
-            #dist = sum([(x-y)**2.0 for x, y in zip(vector1, vector2)])**0.5
-           # dist = np.linalg.norm(vector1 - vector2)
-            
-            return dist/(1 + dist)
+        cdef double dist
+        cdef Py_ssize_t x_max = vector1.shape[0]
+        cdef Py_ssize_t x
+        cdef double tmp = 0.0
+        
+        #dist = (np.square(vector1 - vector2).sum())**0.5
     
+        for x in range(x_max):
+            tmp += (vector1[x] - vector2[x])**2.0   
+        
+        dist = tmp**0.5
+        
+        return dist/(1.0 + dist)
+    
+        
     
     def _train_test_split(self, open_file=True):
         
-# =============================================================================
-#         df = self.data
-# 
-#         y = df.iloc[:, -1]
-#         X = df.iloc[:, :-1]
-#         
-#         X_train, X_test, y_train, y_test = train_test_split(X, y,
-#                                                             test_size=0.33,
-#                                                             random_state=42)
-#         
-#         train_set = pd.concat([X_train, y_train], axis=1)
-#         test_set = pd.concat([X_test, y_test], axis=1)
-# =============================================================================
+        df = self.data
 
-        cutoff = self.data['Time'].max()*0.7
-        train_set = self.data[self.data['Time'] < cutoff]
-        test_set = self.data[self.data['Time'] >= cutoff]
-        print(train_set.Class.value_counts())
-        print(train_set.shape)
-        print(test_set.shape)
-        
-        return train_set, test_set
+        y = df.iloc[:, -1]
+        X = df.iloc[:, :-1]
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y,
+                                                            test_size=0.33,
+                                                            random_state=42)
+
+        train_set = pd.concat([X_train, y_train], axis=1)
+        test_set = pd.concat([X_test, y_test], axis=1)
+
+        return train_set[:20000], test_set[:6660]
 
 
     def calculate_affinity_threshold(self, use_brute_force=False):
@@ -490,26 +488,12 @@ class AIRS:
             antigene, _class = np.array(row[:-1]), row[-1]
             # MC Identification
             mc_match = None
-            
-            print('MC[_class]', len(MC[_class]))
             if len(MC[_class]) == 0:
                 # If this is the first row in dataset
                 mc_match = Cell(vector=antigene, _class=_class)
                 MC[_class].append(mc_match)
             else:
                 best_stim = 0
-                #print(pd.DataFrame(MC[_class]))
-                #for c in MC[_class]:
-                    #print(c)
-                    #print(c.stimulation)
-                #print(MC)
-                #mc_match = MC[MC[_class].stimulation == MC[_class].stimulation.max()][_class]
-                #best_stim = mc_match.stimulation
-
-
-                    #print(best_stim)
-                    #if c.stimulation >= best_stim:
-                
                 for c in MC[_class]:
                     if c.stimulation >= best_stim:
                         best_stim = c.stimulation
@@ -532,8 +516,7 @@ class AIRS:
                         num_clones += 1
 
                 # Competition for resources
-                print('2 MC[_class]', len(MC[_class]))
-   
+    
                 avgStim = sum([x.stimulate(antigene) for x in AB[_class]]) / len(AB[_class])
              #   avgStim = [*map(np.sum, [[x.stimulate(antigene) for x in AB[_class]]])][0] / len(AB[_class])
 
@@ -543,7 +526,6 @@ class AIRS:
                 # BUG! MIN_STEM and MAX_STEM can appear as same value at end of loop.
                 # Error appears if stim is 0<stim<1.
                 # This must be an unexpected value, indicating a possible error.
-                print('AB.keys()', AB.keys())
                 for c in AB.keys():
                     for ab in AB.get(c):
                         stim = ab.stimulate(antigene)
@@ -582,7 +564,7 @@ class AIRS:
             mc_candidate = self.getMcCandidate(AB=AB, _class=_class)
 
             if mc_candidate.stimulation > mc_match.stimulation:
-                if cy_affinity(mc_candidate.vector,
+                if AIRS.affinity(mc_candidate.vector,
                                  mc_match.vector) < self.AFFINITY_THRESHOLD_SCALED:
                     # The mc candidate replaces the mc match
                     MC[_class].remove(mc_match)
@@ -598,12 +580,7 @@ class AIRS:
 
 #        df_pred['y_pred'] = [self.classify(np.array(x)) for x in self.test_set.iloc[:, :-1].values]
         #print(*map(np.array, self.test_set.iloc[:, :-1].values))
-        pool_obj = multiprocessing.Pool(processes=8)
-
-#        df_pred['y_pred'] = [*map(self.classify, [*map(np.array, self.test_set.iloc[:, :-1].values)])]
-        df_pred['y_pred'] = pool_obj.map(self.classify, pool_obj.map(np.array, self.test_set.iloc[:, :-1].values))
-        print(df_pred['y_pred'].shape)
-        print(self.test_set.iloc[:, -1].shape)
+        df_pred['y_pred'] = [*map(self.classify, [*map(np.array, self.test_set.iloc[:, :-1].values)])]
         df_pred['y_true'] = self.test_set.iloc[:, -1].values
         n_correct = [*map(np.sum, [df_pred.y_pred == df_pred.y_true])][0]
         #n_correct = np.sum([df_pred.y_pred == df_pred.y_true])
@@ -621,37 +598,3 @@ class AIRS:
         print(f"Fraud fract : {sum(self.test_set.iloc[:, -1] == 1) / self.test_set.shape[0] * 100:.2f} %")
         print(f"Confusion matrix is {confusion_matrix(df_pred.y_true, df_pred.y_pred)}")
         return n_correct / len(self.test_set)
-
-
-if __name__ == '__main__':
-
-    # =========================================================================
-    # USE-CASE CREDIT CARD FRAUD
-    # =========================================================================
-
-    ARRAY_SIZE = 30  # Features number
-    MAX_ITER = 5  # Max iterations to stop training on a given antigene
-
-    # Mutation rate for ARBs
-    MUTATION_RATE = 0.2
-
-    n = 284808
-    s = 1000 #desired sample size
-    skip = sorted(random.sample(range(1,n+1),n-s)) #
-
-    data = pd.read_csv('data/creditcard.csv', skiprows=skip)
-    data.Time.hist(bins=50)
-    # Very low nr of fraud cases, upsample cases.
-
-    airs = AIRS(hyper_clonal_rate=20,
-                clonal_rate=0.8,
-                class_number=2,
-                mc_init_rate=0.4,
-                total_num_resources=10,
-                affinity_threshold_scalar=0.8,
-                k=6,
-                test_size=0.4,
-                data=data)
-                #input_data_file='data/creditcard.csv')
-
-    airs.train()
