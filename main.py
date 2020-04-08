@@ -60,6 +60,7 @@ import os
 #os.system('python setup.py build_ext --inplace')
 from func import cy_affinity
 import multiprocessing
+from copy import copy
 
 # Substitute AIRS.affinity with cy_affinity
 
@@ -82,66 +83,72 @@ class ARB:
         self.stimulation = float('inf')
         self.resources = 0
 
-    def __str__(self):
-        return "ARB : Vector = {} | class = {} | stim = {} | res = {}".format(self.vector, self._class,
-                                                                              self.stimulation, self.resources)
+# =============================================================================
+#     def __str__(self):
+#         return "ARB : Vector = {} | class = {} | stim = {} | res = {}".format(self.vector, self._class,
+#                                                                               self.stimulation, self.resources)
+# 
+#     def __repr__(self):
+#         return "ARB : Vector = {} | class = {} | stim = {} | res = {}".format(self.vector, self._class,
+#                                                                               self.stimulation, self.resources)
+# =============================================================================
 
-    def __repr__(self):
-        return "ARB : Vector = {} | class = {} | stim = {} | res = {}".format(self.vector, self._class,
-                                                                              self.stimulation, self.resources)
-
-    def stimulate(self, pattern):
-        """
-        Stimulation of the ARB is inversely proportional with the affinity of
-        the cell. Affinity ranges from [0;1] so stimulation ranges from 
-        [1;0] due to start value of stim of 1.
-        
-        Parameters
-        ----------
-        pattern : TYPE
-            DESCRIPTION.
-
-        Returns
-        -------
-        self.stimulation: float
-            Stimulation value of the cell.
-
-        """
-        
-        self.stimulation = 1 - cy_affinity(vector1=pattern,
-                                             vector2=self.vector)
-        return self.stimulation
-
-    def _mutate(self):
-        """
-        For each element in vector, assign a random number in the range
-        [0.1, 7.1], if the random 'change' value is below MUTATION_RATE.
-        
-        Returns
-        -------
-        ARB: ARB instance
-            A new ARB instance with a new vector with either the same
-            value in element, or new mutated value.
-        mutated: bool
-            Informs us if any mutated vector elements were returned.
-        """
-
-        # _range = 1 - self.stimulation
-        mutated = False
-        new_vector = []
-
-        for v in self.vector:
-            change = random.random()
-            change_to = 7 * random.random() + 0.1
-
-            if change <= AIRS.MUTATION_RATE:
-                new_vector.append(change_to)
-                mutated = True
-            else:
-                new_vector.append(v)
-
-        return ARB(vector=new_vector, _class=self._class), mutated
-
+# =============================================================================
+#     def stimulate(self, pattern):
+#         """
+#         Stimulation of the ARB is inversely proportional with the affinity of
+#         the cell. Affinity ranges from [0;1] so stimulation ranges from 
+#         [1;0] due to start value of stim of 1.
+#         
+#         Parameters
+#         ----------
+#         pattern : TYPE
+#             DESCRIPTION.
+# 
+#         Returns
+#         -------
+#         self.stimulation: float
+#             Stimulation value of the cell.
+# 
+#         """
+#         
+#         self.stimulation = 1 - cy_affinity(vector1=pattern,
+#                                              vector2=self.vector)
+#         return self.stimulation
+# 
+# =============================================================================
+# =============================================================================
+#     def _mutate(self):
+#         """
+#         For each element in vector, assign a random number in the range
+#         [0.1, 7.1], if the random 'change' value is below MUTATION_RATE.
+#         
+#         Returns
+#         -------
+#         ARB: ARB instance
+#             A new ARB instance with a new vector with either the same
+#             value in element, or new mutated value.
+#         mutated: bool
+#             Informs us if any mutated vector elements were returned.
+#         """
+# 
+#         # _range = 1 - self.stimulation
+#         mutated = False
+#         new_vector = []
+# 
+#         for v in self.vector:
+#             change = random.random()
+#             change_to = 7 * random.random() + 0.1
+# 
+#             if change <= AIRS.MUTATION_RATE:
+#                 new_vector.append(change_to)
+#                 mutated = True
+#             else:
+#                 new_vector.append(v)
+# 
+#         return ARB(vector=new_vector, _class=self._class), mutated
+# 
+# =============================================================================
 
 class Cell:
     """Cell class
@@ -160,47 +167,32 @@ class Cell:
         self._class = _class  # Cell class 
         self.stimulation = float('inf')
 
-    def __str__(self):
-        return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
+# =============================================================================
+#     def __str__(self):
+#         return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
+# 
+#     def __repr__(self):
+#         return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
+# =============================================================================
 
-    def __repr__(self):
-        return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
-
-    def stimulate(self, pattern):
-        """
-        The higher the affinity, the lower the stimulation.
-
-        Parameters
-        ----------
-        pattern : TYPE
-            DESCRIPTION.
-
-        Returns
-        -------
-        TYPE
-            DESCRIPTION.
-
-        """
-        
-        self.stimulation = 1 - cy_affinity(vector1=pattern, vector2=self.vector)
-        return self.stimulation
-
-    def _mutate(self):
-        #_range = 1 - self.stimulation
-        mutated = False
-        new_vector = []
-
-        for v in self.vector:
-            change = random.random()
-            change_to = random.random()
-
-            if change <= MUTATION_RATE:
-                new_vector.append(change_to)
-                mutated = True
-            else:
-                new_vector.append(v)
-
-        return ARB(vector=new_vector, _class=self._class), mutated
+# =============================================================================
+#     def _mutate(self):
+#         #_range = 1 - self.stimulation
+#         mutated = False
+#         new_vector = []
+# 
+#         for v in self.vector:
+#             change = random.random()
+#             change_to = random.random()
+# 
+#             if change <= MUTATION_RATE:
+#                 new_vector.append(change_to)
+#                 mutated = True
+#             else:
+#                 new_vector.append(v)
+# 
+#         return ARB(vector=new_vector, _class=self._class), mutated
+# =============================================================================
 
 class AIRS:
     """AIRS (Artificial Immune Recognition System) class
@@ -309,8 +301,67 @@ class AIRS:
            # dist = np.linalg.norm(vector1 - vector2)
             
             return dist/(1 + dist)
+
+
+    def _stimulate(self, cell, pattern):
+        """
+        The higher the affinity, the lower the stimulation.
+
+        Parameters
+        ----------
+        pattern : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+
+        """
+        
+        cell.stimulation = 1 - cy_affinity(vector1=pattern, vector2=cell.vector)
+        
+        return cell.stimulation
+
+
+    def _mutate(self, vector, _class):
+        """
+        Mutate the cell. All features will be randomly mutated, at the chance
+        of MUTATION_RATE.
+
+        Parameters
+        ----------
+        vector : TYPE
+            DESCRIPTION.
+        _class : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        mutated = False
+        
+        # Assign random values controlling the mutation cases.
+        mutate_array = np.random.rand(1, len(vector))
+
+        # Array denoting mutation cases
+        decision_mask = np.random.rand(1, len(vector)) <= MUTATION_RATE
+
+        n_mutated = np.where(decision_mask, 1, 0).sum()
+        vector[decision_mask[0]] = np.random.rand(1, n_mutated)[0]
+
+        if n_mutated > 0:
+            mutated = True
+        else:
+            mutated = False
+
+        return ARB(vector=vector, _class=_class), mutated
     
     
+
+
     def _train_test_split(self, open_file=True):
         
 # =============================================================================
@@ -412,6 +463,7 @@ class AIRS:
         minRes = 1.0
         ab = None
         abIndex = None
+        
         for i in range(len(AB[_class])):
             if AB[_class][i].resources <= minRes:
                 minRes = AB[_class][i].resources
@@ -449,7 +501,9 @@ class AIRS:
         vote_array = []
         for c in self.MC.keys():
             for ab in self.MC.get(c):
-                ab.stimulate(antigene)
+                self._stimulate(cell=ab,
+                                pattern=antigene)
+
                 vote_array.append(ab)
 
         vote_array = list(sorted(vote_array, key=lambda cell: -cell.stimulation))
@@ -491,7 +545,6 @@ class AIRS:
             # MC Identification
             mc_match = None
             
-            print('MC[_class]', len(MC[_class]))
             if len(MC[_class]) == 0:
                 # If this is the first row in dataset
                 mc_match = Cell(vector=antigene, _class=_class)
@@ -517,7 +570,8 @@ class AIRS:
 
             # ARB Generation
             AB[_class].append(ARB(vector=mc_match.vector, _class=mc_match._class))  # add the mc_match to ARBs
-            stim = mc_match.stimulate(np.array(antigene))
+            stim = self._stimulate(cell=mc_match,
+                                   pattern=np.array(antigene))
 
             iterations = 0
             while True:
@@ -525,16 +579,17 @@ class AIRS:
                 MAX_CLONES = int(self.HYPER_CLONAL_RATE * self.CLONAL_RATE * stim)
                 num_clones = 0
                 while num_clones < MAX_CLONES:
-                    clone, mutated = mc_match._mutate()
+                    clone, mutated = self._mutate(vector=mc_match.vector,
+                                                  _class=mc_match._class)
 
                     if mutated:
                         AB[_class].append(clone)
                         num_clones += 1
 
                 # Competition for resources
-                print('2 MC[_class]', len(MC[_class]))
    
-                avgStim = sum([x.stimulate(antigene) for x in AB[_class]]) / len(AB[_class])
+                avgStim = sum([self._stimulate(cell=x,
+                                               pattern=antigene) for x in AB[_class]]) / len(AB[_class])
              #   avgStim = [*map(np.sum, [[x.stimulate(antigene) for x in AB[_class]]])][0] / len(AB[_class])
 
                 MIN_STIM = 1.0
@@ -543,10 +598,10 @@ class AIRS:
                 # BUG! MIN_STEM and MAX_STEM can appear as same value at end of loop.
                 # Error appears if stim is 0<stim<1.
                 # This must be an unexpected value, indicating a possible error.
-                print('AB.keys()', AB.keys())
                 for c in AB.keys():
                     for ab in AB.get(c):
-                        stim = ab.stimulate(antigene)
+                        stim = self._stimulate(cell=ab,
+                                               pattern=antigene)
                         if stim < MIN_STIM:
                             MIN_STIM = stim
                         if stim > MAX_STIM:
