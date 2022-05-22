@@ -45,6 +45,7 @@ cdef double cy_affinity(np.ndarray[DTYPE_t, ndim=1] vector1,
     cdef double tmp = 0.0
     
     #dist = (np.square(vector1 - vector2).sum())**0.5
+    print('CYYYY', vector1)
     for x in range(x_max):
         tmp += (vector1[x] - vector2[x])**2.0   
     
