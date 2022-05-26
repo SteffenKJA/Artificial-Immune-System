@@ -85,16 +85,17 @@ from sklearn.metrics import confusion_matrix
 import pandas as pd
 from scipy.spatial.distance import pdist
 import numpy as np
+from sklearn.neighbors import NearestNeighbors
 import tinyarray as ta
 import os
 #os.system('python setup.py build_ext --inplace')
 #from func import cy_affinity
 import multiprocessing
 from copy import copy
-
+from typing import Dict
 # Substitute AIRS.affinity with cy_affinity
-
-#import pandas_profiling
+from sklearn.manifold import TSNE
+import seaborn as sns
 
 
 class ARB:
@@ -113,72 +114,6 @@ class ARB:
         self.stimulation = float('-inf')
         self.resources = 0
 
-# =============================================================================
-#     def __str__(self):
-#         return "ARB : Vector = {} | class = {} | stim = {} | res = {}".format(self.vector, self._class,
-#                                                                               self.stimulation, self.resources)
-# 
-#     def __repr__(self):
-#         return "ARB : Vector = {} | class = {} | stim = {} | res = {}".format(self.vector, self._class,
-#                                                                               self.stimulation, self.resources)
-# =============================================================================
-
-# =============================================================================
-#     def stimulate(self, pattern):
-#         """
-#         Stimulation of the ARB is inversely proportional with the affinity of
-#         the cell. Affinity ranges from [0;1] so stimulation ranges from 
-#         [1;0] due to start value of stim of 1.
-#         
-#         Parameters
-#         ----------
-#         pattern : TYPE
-#             DESCRIPTION.
-# 
-#         Returns
-#         -------
-#         self.stimulation: float
-#             Stimulation value of the cell.
-# 
-#         """
-#         
-#         self.stimulation = 1 - cy_affinity(vector1=pattern,
-#                                              vector2=self.vector)
-#         return self.stimulation
-# 
-# =============================================================================
-# =============================================================================
-#     def _mutate(self):
-#         """
-#         For each element in vector, assign a random number in the range
-#         [0.1, 7.1], if the random 'change' value is below MUTATION_RATE.
-#         
-#         Returns
-#         -------
-#         ARB: ARB instance
-#             A new ARB instance with a new vector with either the same
-#             value in element, or new mutated value.
-#         mutated: bool
-#             Informs us if any mutated vector elements were returned.
-#         """
-# 
-#         # _range = 1 - self.stimulation
-#         mutated = False
-#         new_vector = []
-# 
-#         for v in self.vector:
-#             change = random.random()
-#             change_to = 7 * random.random() + 0.1
-# 
-#             if change <= AIRS.MUTATION_RATE:
-#                 new_vector.append(change_to)
-#                 mutated = True
-#             else:
-#                 new_vector.append(v)
-# 
-#         return ARB(vector=new_vector, _class=self._class), mutated
-# 
-# =============================================================================
 
 class Cell:
     """Cell class
@@ -190,39 +125,11 @@ class Cell:
     def __init__(self, vector=None, _class=None):
         
         assert vector is not None, 'Cannot create cell with no features'
-        #    self.vector = [random.random() for _ in range(ARRAY_SIZE)]
-        #else:
 
         self.vector = np.array(vector)  # Vector containing all cell features.
         self._class = _class  # Cell class 
         self.stimulation = float('-inf')
 
-# =============================================================================
-#     def __str__(self):
-#         return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
-# 
-#     def __repr__(self):
-#         return "Cell : Vector = {} | class = {} | stim = {}".format(self.vector, self._class, self.stimulation)
-# =============================================================================
-
-# =============================================================================
-#     def _mutate(self):
-#         #_range = 1 - self.stimulation
-#         mutated = False
-#         new_vector = []
-# 
-#         for v in self.vector:
-#             change = random.random()
-#             change_to = random.random()
-# 
-#             if change <= MUTATION_RATE:
-#                 new_vector.append(change_to)
-#                 mutated = True
-#             else:
-#                 new_vector.append(v)
-# 
-#         return ARB(vector=new_vector, _class=self._class), mutated
-# =============================================================================
 
 class AIRS:
     """AIRS (Artificial Immune Recognition System) class
@@ -289,11 +196,9 @@ class AIRS:
             self.train_set = train_set
             self.test_set = test_set
         
-        #self.train_set = self.train_set.append([self.train_set[self.train_set.loc[:, 'Class']==1]], ignore_index=True)
-
 
     @staticmethod
-    def affinity(vector1, vector2, brute_force=False):
+    def affinity(vector1, vector2):
         """
         Compute the affinity (Normalized!! distance) between two features
         vectors.
@@ -310,35 +215,9 @@ class AIRS:
             The affinity between the two vectors [0-1]
         """
 
-        if brute_force:
-            import math
-            euclidian_distance = 0
-            d = 0
-
-            for i, j in zip(vector1, vector2):
-                d += (i - j)**2
-            euclidian_distance = math.sqrt(d)
-
-            return euclidian_distance / (1 + euclidian_distance)
-        else:
-#            dist = np.sqrt((np.square(vector1 - vector2).sum()))
-            #vector1 = np.array(vector1)
-            #vector2 = np.array(vector2)
-            #assert type(vector1) in (np.ndarray_int, np.ndarray_float), type(vector1)
-            #assert type(vector2) in (np.ndarray_int, np.ndarray_float), type(vector2)
-            #print(vector1)
-            #print(vector2)
-            #dist = (vector1 - vector2)**2.0
-           # dist = (np.square(vector1 - vector2).sum())**0.5
-            #print('vectors')
-            #print(vector1.shape)
-            #print(np.array(vector2))
-            #dist = pdist(ta.array((vector1, np.array(vector2))))
-            #dist = pdist(vector1, vector2)
-            #dist = sum([(x-y)**2.0 for x, y in zip(vector1, vector2)])**0.5
-            dist = np.linalg.norm(vector1 - vector2)
-            
-            return dist/(1 + dist)
+        dist = np.linalg.norm(vector1 - vector2)
+        
+        return dist/(1 + dist)
 
 
     def _stimulate_apply(self, cell, pattern):
@@ -358,7 +237,9 @@ class AIRS:
         """
         
         cell['stimulation'] = 1 - self.affinity(vector1=pattern, vector2=cell[self.cols_features].to_numpy())
-        
+        if pd.isna(cell['stimulation']):
+            cell['stimulation'] = 1
+ 
         return cell['stimulation']
 
     def _stimulate_val(self, cell, pattern):
@@ -376,8 +257,11 @@ class AIRS:
             DESCRIPTION.
 
         """
-                
-        return 1 - self.affinity(vector1=cell[self.cols_features].to_numpy(), vector2=pattern)
+        affinity_val = self.affinity(vector1=cell[self.cols_features].to_numpy(), vector2=pattern)
+
+        if pd.isna(affinity_val):
+            affinity_val = 1 
+        return 1 - affinity_val
 
     def _mutate(self, cell):
         """
@@ -401,14 +285,16 @@ class AIRS:
         mutate_array = np.random.rand(1, self.n_features)
 
         # Array denoting mutation cases
-        decision_mask = np.random.rand(1, self.n_features) <= MUTATION_RATE
+        decision_mask = mutate_array <= MUTATION_RATE
 
         n_mutated = np.where(decision_mask, 1, 0).sum()
         
-        if cell['ARB'] == 1:
-            cell[self.cols_features][decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
+        if cell['ARB'].iloc[0] == 1:
+            #cell[self.cols_features][decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
+            cell.iloc[:, decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
         else:
-            cell[self.cols_features][decision_mask[0]] = np.random.rand(1, n_mutated)[0]
+            #cell[self.cols_features][decision_mask[0]] = np.random.rand(1, n_mutated)[0]
+            cell.iloc[:, decision_mask[0]] = np.random.rand(1, n_mutated)[0]
 
         if n_mutated > 0:
             mutated = True
@@ -416,34 +302,26 @@ class AIRS:
             mutated = False
 
         return cell, mutated
-    
-    
 
 
     def _train_test_split(self, open_file=True):
         
-#=============================================================================
         df = self.data
 
         y = df.iloc[:, -1]
         X = df.iloc[:, :-1]
         
         X_train, X_test, y_train, y_test = train_test_split(X, y,
-                                                            test_size=0.33,
+                                                            test_size=0.5,
                                                             random_state=42)
         
         train_set = pd.concat([X_train, y_train], axis=1)
         test_set = pd.concat([X_test, y_test], axis=1)
-# =============================================================================
-
-        # cutoff = self.data['Time'].max()*0.7
-        # train_set = self.data[self.data['Time'] < cutoff]
-        # test_set = self.data[self.data['Time'] >= cutoff]
         
         return train_set, test_set
 
 
-    def calculate_affinity_threshold(self, use_brute_force=False):
+    def calculate_affinity_threshold(self):
         """
         Calculates euclidian distance between the datapoints.
         Since we can have a large nr. of features and a very large nr. of 
@@ -452,35 +330,24 @@ class AIRS:
         Perhaps use Cython.
         """
         print("Now calculating affinity threshold..")
-        if use_brute_force:
-            affinity_threshold = 0
-            print('Calculating affinity threshold..')
-            for i in range(len(self.train_set)):
-                for j in range(i + 1, len(self.train_set)):
-                    affinity_threshold += self.affinity(self.train_set.iloc[i, :-1], self.train_set.iloc[j, :-1])
-                    
-            self.AFFINITY_THRESHOLD = affinity_threshold / (len(self.train_set) * (len(self.train_set) - 1) / 2)
-        else:
             
-            # Affinity threshold must be calculated from a normalized
-            # dataframes.
-            x = self.train_set.iloc[:, :-1].values  # returns a numpy array
-            min_max_scaler = preprocessing.MinMaxScaler()
-            x_scaled = min_max_scaler.fit_transform(x)
-            df = pd.DataFrame(x_scaled)
+        # Affinity threshold must be calculated from a normalized
+        # dataframe.
+        x = self.train_set.iloc[:, :-1].values  # returns a numpy array
+        min_max_scaler = preprocessing.MinMaxScaler()
+        x_scaled = min_max_scaler.fit_transform(x)
+        df = pd.DataFrame(x_scaled)
 
-            self.AFFINITY_THRESHOLD = np.mean(pdist(df.values))
-            
-#            self.AFFINITY_THRESHOLD = np.mean(pdist(self.train_set.iloc[:, :-1].values))
-            
-            print(f"Affinity threshold found as {self.AFFINITY_THRESHOLD}!")
+        self.AFFINITY_THRESHOLD = np.mean(pdist(df.values))
+        
+        print(f"Affinity threshold found as {self.AFFINITY_THRESHOLD}!")
 
 
     def init_MC(self, MC):
         """ 
         Initialize the memory set pool. Appended as rows into the empty
-        dataframes in MC dict. Two dataframes are seperately composed of fraud
-        and nonfraud seed cells to be used as a basis for the subsequent
+        dataframes in MC dict. Two dataframes are seperately composed of the
+        two classes of seed cells to be used as a basis for the subsequent
         calculations.
         
         Parameters
@@ -498,32 +365,16 @@ class AIRS:
         print("Initiating memory set pool..")
 
         seed_cells = self.train_set.sample(frac=self.MC_INIT_RATE)
-        seed_cells['stimulation'] = float('-inf')
+        seed_cells['stimulation'] = 0#float('-inf')
         seed_cells['ARB'] = 0
         seed_cells = seed_cells.reindex(columns=seed_cells.columns.difference(['stimulation', self.class_col]).tolist() + ['stimulation', self.class_col])
 
-        fraud_mask = seed_cells[self.class_col] == 1
+        class_mask = seed_cells[self.class_col] == 1
 
         # Append seed cells to the correct class
-        MC[0] = MC[0].append(seed_cells[~fraud_mask])
-        MC[1] = MC[1].append(seed_cells[fraud_mask])
+        MC[0] = MC[0].append(seed_cells[~class_mask])
+        MC[1] = MC[1].append(seed_cells[class_mask])
 
-# =============================================================================
-#         for _ in range(int(self.train_set.shape[0] * self.MC_INIT_RATE)):
-#             # Choose a random row from the train set. Same value can 
-#             # chosen multiple times in this loop.
-#             seed_cell = random.choice(self.train_set.values)
-#             
-#             # Create a memory cell and append it to the MC dictionary in the 
-#             # Correct class list., i.e., sort input memory cells into fraud
-#             # and nonfraud cells.
-#             
-#             # seed_cell[-1] is the class. Append Cell instance with all
-#             # features.
-# 
-#             MC[int(seed_cell[-1])].append(Cell(vector=seed_cell[0:-1],
-#                                                _class=seed_cell[-1]))
-# =============================================================================
 
     def argminARB(self, AB, _class):
         """Get the ARB with the minimum amount of resources
@@ -543,79 +394,45 @@ class AIRS:
 
         return ab, abIndex
 
-    def getMcCandidate(self, AB, _class):
+    def getMcCandidate(self, AB: Dict, _class: int) -> pd.DataFrame:
         """Get the higher stimulation ARB to be (eventually) added to the memory cells pool
         :param AB: The Artificial Recognition Balls set
         :param _class: the class of the ARBs
         :return: Higher stimulation ARB of the given class
         """
-        #maxStim = 0.0
-        #ab = None
 
         maxStim = AB[_class].stimulation.max()
-        #maxStim_index = np.where(AB[_class].stimulation == [maxStim])[0]
-        #print(maxStim_index)
-        #ab = AB[_class].iloc[maxStim_index, :]
         ab = AB[_class][AB[_class]['stimulation'] == maxStim]
 
-# =============================================================================
-#         for i in range(len(AB[_class])):
-#             if AB[_class][i].stimulation >= maxStim:
-#                 maxStim = AB[_class][i].stimulation
-#                 ab = AB[_class][i]
-# =============================================================================
-        
-        #c = Cell(vector=ab.vector, _class=ab._class)
-        #c.stimulation = ab.stimulation
+        if ab.shape[0] > 1:
+            ab = pd.DataFrame(ab.iloc[0, :]).T
+
+        assert isinstance(ab, pd.DataFrame)
         
         return ab
 
-    # def classify(self, antigene):
-    #     if (self.MC is None) or (self.AB is None):
-    #         raise Exception("AIRS must be trained first")
-
-    #     vote_array = []
-    #     for c in self.MC.keys():
-    #         for index, ab in self.MC.get(c).iterrows():
-    #             #self._stimulate_apply(cell=ab,
-    #             #                pattern=antigene)
-
-    #             ab['stimulation'] = self._stimulate_val(cell=ab,
-    #                             pattern=antigene)
-
-    #             vote_array.append(ab)
-
-    #     vote_array = list(sorted(vote_array, key=lambda cell: -cell.stimulation))
-    #     v = {0: 0, 1: 0}
-    #     self.K = min(self.K, len(vote_array))
-    #     for x in vote_array[:self.K]:
-    #         v[x._class] += 1
-
-    #     maxVote = 0
-    #     _class = 0
-    #     for x in v.keys():
-    #         if v[x] > maxVote:
-    #             maxVote = v[x]
-    #             _class = x
-    #     return _class
-
     def classify(self, antigene):
         
-        df_vote = pd.DataFrame({})
+        # df_vote = pd.DataFrame({})
 
-        for c in self.MC.keys():
-            df_vote_c = self.MC.get(c).copy()
-            df_vote_c['stimulation'] = df_vote_c.apply(self._stimulate_val, pattern=antigene, axis=1)
+        # for c in self.MC.keys():
+        #     df_vote_c = self.MC.get(c).copy()
+        #     df_vote_c['stimulation'] = df_vote_c.apply(self._stimulate_val, pattern=antigene, axis=1)
 
-            df_vote = df_vote.append(df_vote_c)
+        #     df_vote = df_vote.append(df_vote_c)
 
-        df_vote.sort_values(by='stimulation', ascending=False)
+        # df_vote.sort_values(by='stimulation', ascending=False)
         
-        self.K = min(self.K, df_vote.shape[0])
+        # self.K = min(self.K, df_vote.shape[0])
 
-        df_allowed_voters = df_vote.iloc[:self.K, :].copy()
+        # df_allowed_voters = df_vote.iloc[:self.K, :].copy()
+        # df_allowed_voters['class_count'] = df_allowed_voters.groupby('Class')['stimulation'].transform('count')
+        df_knn = self.MC_mass.drop(['ARB', 'stimulation', 'Class', 'resources'], axis=1)
+        nbrs = NearestNeighbors(n_neighbors=self.K, algorithm='ball_tree').fit(df_knn.to_numpy())
+        distances, indices = nbrs.kneighbors([antigene])
+        df_allowed_voters = self.MC_mass.iloc[indices[0], :].copy()
         df_allowed_voters['class_count'] = df_allowed_voters.groupby('Class')['stimulation'].transform('count')
-
+        print('class_count unique is', df_allowed_voters['class_count'].unique())
         df_result = df_allowed_voters.drop_duplicates('Class')
         df_result = df_result[df_result['class_count'].max() == df_result['class_count']]
 
@@ -623,7 +440,6 @@ class AIRS:
             return df_result['Class']
         else:
             return np.nan
-
 
     def train(self):
         """Train AIRS on the training dataset"""
@@ -646,61 +462,50 @@ class AIRS:
         #for row in self.train_set:
         self.train_set.reset_index(drop=True, inplace=True)
         size = self.train_set.shape[0]
+
         for index, row in self.train_set.iterrows():
             print(f'Training row {index} out of {size}')
             # Split into featureset (antigene) and target (class)
             antigene, _class = np.array(row[:-1]), int(row[-1])
-            # MC Identification
+            
+            # ----------------------------- MC Identification ---------------------------- #
             mc_match = None
             
             if len(MC[_class]) == 0:
                 # If this is the first row in dataset
                # mc_match = Cell(vector=antigene, _class=_class)
-                mc_match = row
-                mc_match['stimulation'] = float('-inf')
+                mc_match = pd.DataFrame(row).T
+                mc_match['stimulation'] = 0.0 #float('-inf')
                 mc_match['ARB'] = 0
-                MC[_class] = MC[_class].append(mc_match)
+                MC[_class] = pd.concat([MC[_class], mc_match], axis=0)
             else:
+                # Select a MC candidate.
+                # NOTE: We choose the MC with the highest stimulation as a starting point.
+                # This stimulation relates to the nearest mc to any previous antigene, not the closests
+                # previous antigene to the current antigene, so we could start quite far away in parameter space.
+                # The mutated clones will randomly fan out from this positions, but will tend to
+                # be in the mass center, since it is a random antigene as reference point (or rather, the
+                # mc closests to any of the reference antigene). This mass center tendency means that we effectively
+                # remove outliers and concentrate our MCs of a class near the density center of the antigenes of a given class.
                 best_stim = 0
-                mc_match = row
+                #mc_match = pd.DataFrame(row).T
 
-                #print(pd.DataFrame(MC[_class]))
-                #for c in MC[_class]:
-                    #print(c)
-                    #print(c.stimulation)
-                #print(MC)
-                #mc_match = MC[MC[_class].stimulation == MC[_class].stimulation.max()][_class]
-                #best_stim = mc_match.stimulation
-
-
-                    #print(best_stim)
-                    #if c.stimulation >= best_stim:
                 max_stim = MC[_class].stimulation.max()
-                if max_stim > best_stim:
+                if (max_stim >= best_stim): # or (MC[_class].shape[0] == 1)
                     best_stim = max_stim
-                    mc_match = MC[_class][MC[_class].stimulation == max_stim]
+                    mc_match = pd.DataFrame(MC[_class][MC[_class].stimulation == max_stim])
 
                     if mc_match.shape[0] > 1:
-                        mc_match = mc_match.iloc[0, :]
+                        mc_match = pd.DataFrame(mc_match.iloc[0, :]).T
 
-# =============================================================================
-#                 for c in MC[_class]:
-#                     if c.stimulation >= best_stim:
-#                         best_stim = c.stimulation
-#                         mc_match = c
-# =============================================================================
-
-            # ARB Generation
-#            AB[_class].append(ARB(vector=mc_match.vector, _class=mc_match._class))  # add the mc_match to ARBs
             mc_match['ARB'] = 1
-            mc_match['stimulation'] = self._stimulate_val(cell=mc_match,
-                                                            pattern=antigene)
-            AB[_class] = AB[_class].append(mc_match)  # add the mc_match to ARBs
+            # The stimulation between MC candidate and the incoming antigene.
+            mc_match['stimulation'] = self._stimulate_val(cell=mc_match, pattern=antigene)
+            AB[_class] = pd.concat([AB[_class], mc_match], axis=0)  # add the mc_match to ARBs
 
-            #stim = self._stimulate_apply(cell=mc_match,
-            #                       pattern=antigene)
             stim = mc_match['stimulation']
             iterations = 0
+
             while True:
 
             # =================================================================
@@ -708,14 +513,14 @@ class AIRS:
             # =================================================================
 
                 iterations += 1
-                MAX_CLONES = int(self.HYPER_CLONAL_RATE * self.CLONAL_RATE *stim)
+                MAX_CLONES = int(self.HYPER_CLONAL_RATE * self.CLONAL_RATE * stim)
                 num_clones = 0
 
                 while num_clones < MAX_CLONES:
                     clone, mutated = self._mutate(cell=mc_match)
 
                     if mutated:
-                        AB[_class] = AB[_class].append(clone)
+                        AB[_class] = pd.concat([AB[_class], clone], axis=0)
                         num_clones += 1
 
                 # =============================================================
@@ -730,63 +535,46 @@ class AIRS:
                     avgStim = AB[_class]['stimulation'].sum() / AB[_class].shape[0]
 
                     try:
-                        stim_values_max = [AB[_class_num].stimulation.max() for _class_num in AB.keys() if 'stimulation' in AB[_class_num].columns]
                         stim_values_min = [AB[_class_num].stimulation.min() for _class_num in AB.keys() if 'stimulation' in AB[_class_num].columns]
+                        stim_values_max = [AB[_class_num].stimulation.max() for _class_num in AB.keys() if 'stimulation' in AB[_class_num].columns]
                             
-                        max_stim_ab = max(stim_values_max)
                         min_stim_ab = min(stim_values_min)
+                        max_stim_ab = max(stim_values_max)
                     except AttributeError:
                         print('Stimulation not determined')
                         min_stim_ab = 0
-                        max_stim_ab = 0                        #max_stim_ab = AB[0].stimulation.max()
-                        #min_stim_ab = AB[0].stimulation.min()
+                        max_stim_ab = 0
 
-              #  avgStim = sum([self._stimulate(cell=x,
-              #                                 pattern=antigene) for x in AB[_class]]) / AB[_class].shape[0]
 
                 MIN_STIM = 1.0
                 MAX_STIM = 0.0
 
                 # BUG! MIN_STEM and MAX_STEM can appear as same value at end of loop.
+                # Will happen if only one AB of a single class exists.
                 # Error appears if stim is 0<stim<1.
                 # This must be an unexpected value, indicating a possible error.
-
-# =============================================================================
-#                 for _class in AB.keys():
-#                     for index, ab in self.AB[_class].iterrows():                  
-# 
-#                         stim = self._stimulate(cell=ab,
-#                                                pattern=antigene)
-#                         if stim < MIN_STIM:
-#                             MIN_STIM = stim
-#                         if stim > MAX_STIM:
-#                             MAX_STIM = stim
-# =============================================================================
+                
+                # NOTE: Odd default values. Stim of 1.0 equals zero distance (min affinity)
+                # Appears to be set so we get negative stimulation if we do not have any ABs.    
 
                 MIN_STIM = min([MIN_STIM, min_stim_ab])
-                MAX_STIM = min([MAX_STIM, max_stim_ab])
+                MAX_STIM = max([MAX_STIM, max_stim_ab])
 
-                if MIN_STIM == MAX_STIM:
+                #if MIN_STIM == MAX_STIM:
+                if sum([AB[c].shape[0] for c in AB.keys()]) < 2:
                  #   print(f"OBS! 0<stim({stim})<1, keeping MIN_STEM and MAX_STEM at default values")
                     MIN_STIM = 1.0
                     MAX_STIM = 0.0                    
 
-# =============================================================================
-#                 for _class in AB.keys():
-#                     for index, ab in self.AB[_class].iterrows():   
-#                         ab.stimulation = (ab.stimulation - MIN_STIM) / (MAX_STIM - MIN_STIM)
-#                         ab.resources = ab.stimulation * self.CLONAL_RATE
-# =============================================================================
-                if len(MC[_class]) != 0:
+                for c in AB.keys():
+                    
+                    if len(AB[c].index) > 0:
 
-                    for c in AB.keys():
-                        
-                        if len(AB[c].index) > 0:
-
-                            AB[c]['stimulation'] = (AB[c]['stimulation'] - MIN_STIM) / (MAX_STIM - MIN_STIM)
-                            AB[c]['resources'] = AB[c]['stimulation'] * self.CLONAL_RATE
+                        AB[c]['stimulation'] = (AB[c]['stimulation'] - MIN_STIM) / (MAX_STIM - MIN_STIM)
+                        AB[c]['resources'] = AB[c]['stimulation'] * self.CLONAL_RATE
 
                 #print([x.resources for x in AB[_class]])
+                if AB[_class].shape[0] > 0:
                     resAlloc = AB[_class].resources.sum()
                 else:
                     resAlloc = 0
@@ -798,13 +586,14 @@ class AIRS:
                 while resAlloc > numResAllowed:
                     numResRemove = resAlloc - numResAllowed
                     abRemove, abRemoveIndex = self.argminARB(AB=AB, _class=_class)
+                    AB[_class].reset_index(drop=True, inplace=True)
                     
                     if abRemove.resources <= numResRemove:
-                        AB[_class].reset_index(drop=True, inplace=True)
                         AB[_class] = AB[_class].drop(index=abRemoveIndex)
                         resAlloc -= abRemove.resources
                     else:
-                        AB[_class].iloc[abRemoveIndex, :].resources -= numResRemove
+                        AB[_class].loc[AB[_class].index == abRemoveIndex, 'resources'] -= numResRemove
+                        #AB[_class].iloc[abRemoveIndex, :].resources -= numResRemove
                         resAlloc -= numResRemove
                # print(f"avgStim is {avgStim}")
                 if (avgStim > self.AFFINITY_THRESHOLD) or (iterations >= MAX_ITER):
@@ -812,34 +601,51 @@ class AIRS:
 
             mc_candidate = self.getMcCandidate(AB=AB, _class=_class)
 
-            if mc_candidate['stimulation'].get_values()[0] > float(mc_match.stimulation):
-                # if 'Class' in mc_candidate.columns:    
-                #     candidate_antigene = np.array(mc_candidate.drop('Class', axis=1))
-                # else:
-                #     candidate_antigene = np.array(mc_candidate)
-                # if 'Class' in mc_match.columns:    
-                #     mc_match_antigene = np.array(mc_match.drop('Class', axis=1))
-                # else:
-                #     mc_match_antigene = np.array(mc_match)#.drop('Class'))
+            # get_values()[0]
+            if mc_candidate['stimulation'].iloc[0] > float(mc_match.stimulation):
                 
-                candidate_antigene = np.array(mc_candidate)
-                mc_match_antigene = np.array(mc_match)#.drop('Class'))
+                mc_candidate_antigene = np.array(mc_candidate.drop(['Class', 'stimulation', 'resources'], axis=1))
+                if 'resources' in mc_match.columns:
+                    mc_match_antigene = np.array(mc_match.drop(['Class', 'stimulation', 'resources'], axis=1)) 
+                else: 
+                    mc_match_antigene = np.array(mc_match.drop(['Class', 'stimulation'], axis=1)) 
+                
+                # If the mc_candidate and the mc_match (parent mc) are within a threshold distance of each other, remove
+                # the mc_match, since mc_candidate in this case is closer to the antigene.
+                if self.affinity(vector1=mc_candidate_antigene, vector2=mc_match_antigene) < self.AFFINITY_THRESHOLD*self.AFFINITY_THRESHOLD_SCALAR:
 
-#                if cy_affinity(vector1=candidate_antigene[0], vector2=mc_match_antigene[0]) < self.AFFINITY_THRESHOLD_SCALED:
-                #if self.affinity(vector1=candidate_antigene[0], vector2=mc_match_antigene[0]) < self.AFFINITY_THRESHOLD_SCALED:
-                    # The mc candidate replaces the mc match
-                    #MC[_class] = MC[_class][not MC[_class].Time.equals(mc_match.Time)]
-                # Add the mc_match to MC pool
-                MC[_class] = MC[_class].append(mc_candidate)
+                    mc_class_compare = MC[_class].drop(['Class', 'ARB', 'stimulation'], axis=1)
+                    mc_class_compare = mc_class_compare.reindex(sorted(mc_class_compare.columns), axis=1)
+
+                    mc_match_compare = mc_match.drop(['Class', 'ARB', 'stimulation'], axis=1)
+                    mc_match_compare = mc_match_compare.reindex(sorted(mc_match_compare.columns), axis=1)
+
+                    mc_match_index = np.unique(np.where(mc_class_compare.to_numpy()==mc_match_compare.to_numpy())[0]).tolist()
+                    
+                    # need to drop mc match here
+                    # MC[_class].drop(np.where(MC[_class].iloc(4) == mc_match.iloc[4]), axis=0)
+                    MC[_class] = MC[_class].reset_index(drop=True).drop(mc_match_index, axis=0)
+                
+                MC[_class] = pd.concat([MC[_class], mc_candidate], axis=0)
 
         self.MC = MC
         self.AB = AB
+
+        # Define the MC space of containing MCs of all classes
+
+        self.MC_mass = pd.concat([MC.get(c) for c in MC.keys()], axis=0).reset_index(drop=True)
 
         n_correct = 0
         
         df_pred = pd.DataFrame({})
 
-        df_pred['y_pred'] = [x.values[0] for x in [self.classify(np.array(x)) for x in self.test_set.iloc[:, :-1].values]]
+        #df_pred['y_pred'] = [x.values[0] for x in [self.classify(np.array(x)) for x in self.test_set.iloc[:, :-1].values]]
+        from sklearn.linear_model import LogisticRegression
+        logisticRegr = LogisticRegression()
+        self.MC_mass_train = self.MC_mass.drop(['Class', 'ARB', 'stimulation', 'resources'], axis=1)
+        self.MC_mass_train = self.MC_mass_train.fillna(self.MC_mass_train.mean())
+        logisticRegr.fit(self.MC_mass_train, self.MC_mass['Class'])
+        df_pred['y_pred'] = logisticRegr.predict(self.test_set.drop(['Class'], axis=1))
 
         #print(*map(np.array, self.test_set.iloc[:, :-1].values))
         #pool_obj = multiprocessing.Pool(processes=8)
@@ -853,20 +659,13 @@ class AIRS:
         #n_correct = [*map(np.sum, [df_pred.y_pred == df_pred.y_true])][0]
         n_correct = np.sum([df_pred.y_pred == df_pred.y_true])
 
-        #for row in self.test_set.values:
-        #    ag = row[:-1]
-        #    _class = row[-1]
-        #    if self.classify(ag) == reverseMapping[_class]:
-        #        n_correct += 1
-        #for ag, _class in (self.test_set.iloc[:, :-1], self.test_set.iloc[:, -1]):
-
         print("Execution time : {:2.4f} seconds".format(time.time() - start))
         print("Accuracy : {:2.2f} %".format(n_correct * 100 / self.test_set.shape[0]))
         print(f"Nonfraud fract : {sum(self.test_set.iloc[:, -1] == 0) / self.test_set.shape[0] * 100:.2f} %")
         print(f"Fraud fract : {sum(self.test_set.iloc[:, -1] == 1) / self.test_set.shape[0] * 100:.2f} %")
         print(f"Confusion matrix is {confusion_matrix(df_pred.y_true, df_pred.y_pred)}")
 
-        return self.MC, self.train_set, self.test_set
+        return self.MC_mass, self.train_set, self.test_set
 
 
 if __name__ == '__main__':
@@ -881,44 +680,109 @@ if __name__ == '__main__':
     # Mutation rate for ARBs
     MUTATION_RATE = 0.2
 
-    n = 284808
-    s = 160000 #desired sample size
-    skip = sorted(random.sample(range(1,n+1),n-s)) #
+    # n = 284808
+    # s = 200000 #desired sample size
+    # skip = sorted(random.sample(range(1,n+1), n-s)) #
 
-    data = pd.read_csv('data/creditcard.csv', skiprows=skip)
-    data_1 = data[data['Class']==1].copy()
+    data = pd.read_csv('data/creditcard.csv')#, skiprows=skip)
+    data_1 = data[data['Class']==1].copy()#.iloc[:300, :]
+    data_0 = data[data['Class']==0].copy()
     
-    data = pd.concat([data.iloc[:1000, :], data_1], axis=0)
+    data = pd.concat([data_0.sample(data_1.shape[0]*1), data_1], axis=0)
     plt.figure()
     data.Class.hist(bins=50)
     plt.show()
 
     # Very low nr of fraud cases, upsample cases.
 
-    airs = AIRS(hyper_clonal_rate=20,
+    airs = AIRS(hyper_clonal_rate=30,
                 clonal_rate=0.8,
                 class_number=2,
                 mc_init_rate=0.4,
-                total_num_resources=10,
+                total_num_resources=20, #10
                 affinity_threshold_scalar=0.8,
-                k=7,
+                k=13,
                 test_size=0.3,
                 data=data)
                 #input_data_file='data/creditcard.csv')
 
     mc, df_train, df_test = airs.train()
+    
+    mc.loc[:, 'Class'] += 4
+    df_test.loc[:, 'Class'] += 2
+
+    df_plot = pd.concat([df_test, mc], axis=0)
 
     tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
-    tsne_results = tsne.fit_transform(data_subset)
+    tsne_results = tsne.fit_transform(df_plot.drop(['ARB', 'stimulation', 'Class', 'resources'], axis=1))
 
-    df_subset['tsne-2d-one'] = tsne_results[:,0]
-    df_subset['tsne-2d-two'] = tsne_results[:,1]
-    plt.figure(figsize=(16,10))
+    df_plot['tsne-2d-one'] = tsne_results[:,0]
+    df_plot['tsne-2d-two'] = tsne_results[:,1]
     
+    plt.figure()
     sns.scatterplot(
-    x="tsne-2d-one", y="tsne-2d-two",
-    hue="y",
-    palette=sns.color_palette("hls", 10),
-    data=df_subset,
-    legend="full",
-    alpha=0.3)
+        x="tsne-2d-one",
+        y="tsne-2d-two",
+        hue="Class",
+        palette=sns.color_palette("husl", 4),
+        #markers=['8', 's', 'p', '+', '^', 'o'],
+        data=df_plot,
+        alpha=0.3)
+    plt.title('Memory cells')
+    plt.show()
+
+    print('Done')
+    # tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
+    # tsne_results = tsne.fit_transform(mc.drop(['ARB', 'stimulation', 'Class', 'resources'], axis=1))
+
+    # mc['tsne-2d-one'] = tsne_results[:,0]
+    # mc['tsne-2d-two'] = tsne_results[:,1]
+    
+    # plt.figure()
+    # sns.scatterplot(
+    #     x="tsne-2d-one",
+    #     y="tsne-2d-two",
+    #     hue="Class",
+    #     palette=sns.color_palette("hls", 2),
+    #     data=mc,
+    #     alpha=0.3)
+    # plt.title('Memory cells')
+    # plt.show()
+
+    # tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
+    # tsne_results = tsne.fit_transform(df_test.drop(['Class'], axis=1))
+
+    # df_test['tsne-2d-one'] = tsne_results[:,0]
+    # df_test['tsne-2d-two'] = tsne_results[:,1]
+    
+    # plt.figure()
+    # sns.scatterplot(
+    #     x="tsne-2d-one",
+    #     y="tsne-2d-two",
+    #     hue="Class",
+    #     palette=sns.color_palette("hls", 2),
+    #     data=df_test,
+    #     alpha=0.3)
+    # plt.title('Test data raw')
+    # plt.show()
+
+    # tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
+    # tsne_results = tsne.fit_transform(df_train.drop(['Class'], axis=1))
+
+    # df_train['tsne-2d-one'] = tsne_results[:,0]
+    # df_train['tsne-2d-two'] = tsne_results[:,1]
+    
+    # plt.figure()
+    # sns.scatterplot(
+    #     x="tsne-2d-one",
+    #     y="tsne-2d-two",
+    #     hue="Class",
+    #     palette=sns.color_palette("hls", 2),
+    #     data=df_train,
+    #     alpha=0.3)
+
+    # plt.title("Train data raw")
+    # plt.show()
+
+
+    # print('Done')
