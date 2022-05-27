@@ -76,7 +76,7 @@ Parameters:
 
 @authors: Steffen Kjær Jacobsen and Azzoug Aghiles.
 """
-
+# %%
 import random
 import time
 from sklearn.model_selection import train_test_split
@@ -288,13 +288,16 @@ class AIRS:
         decision_mask = mutate_array <= MUTATION_RATE
 
         n_mutated = np.where(decision_mask, 1, 0).sum()
-        
+        features_to_mutate = np.array(self.cols_features)[decision_mask[0]]
+
         if cell['ARB'].iloc[0] == 1:
-            #cell[self.cols_features][decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
-            cell.iloc[:, decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
+           # cell[self.cols_features][decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
+            #cell.iloc[:, decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
+            cell.loc[:, features_to_mutate] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
         else:
             #cell[self.cols_features][decision_mask[0]] = np.random.rand(1, n_mutated)[0]
-            cell.iloc[:, decision_mask[0]] = np.random.rand(1, n_mutated)[0]
+            #cell.iloc[:, decision_mask[0]] = np.random.rand(1, n_mutated)[0]
+            cell.loc[:, features_to_mutate] = np.random.rand(1, n_mutated)[0]
 
         if n_mutated > 0:
             mutated = True
@@ -426,18 +429,18 @@ class AIRS:
         # self.K = min(self.K, df_vote.shape[0])
 
         # df_allowed_voters = df_vote.iloc[:self.K, :].copy()
-        # df_allowed_voters['class_count'] = df_allowed_voters.groupby('Class')['stimulation'].transform('count')
-        df_knn = self.MC_mass.drop(['ARB', 'stimulation', 'Class', 'resources'], axis=1)
+        # df_allowed_voters['class_count'] = df_allowed_voters.groupby(self.class_col)['stimulation'].transform('count')
+        df_knn = self.MC_mass.drop(['ARB', 'stimulation', self.class_col, 'resources'], axis=1)
         nbrs = NearestNeighbors(n_neighbors=self.K, algorithm='ball_tree').fit(df_knn.to_numpy())
         distances, indices = nbrs.kneighbors([antigene])
         df_allowed_voters = self.MC_mass.iloc[indices[0], :].copy()
-        df_allowed_voters['class_count'] = df_allowed_voters.groupby('Class')['stimulation'].transform('count')
+        df_allowed_voters['class_count'] = df_allowed_voters.groupby(self.class_col)['stimulation'].transform('count')
         print('class_count unique is', df_allowed_voters['class_count'].unique())
-        df_result = df_allowed_voters.drop_duplicates('Class')
+        df_result = df_allowed_voters.drop_duplicates(self.class_col)
         df_result = df_result[df_result['class_count'].max() == df_result['class_count']]
 
         if df_result.shape[0]:
-            return df_result['Class']
+            return df_result[self.class_col]
         else:
             return np.nan
 
@@ -604,20 +607,20 @@ class AIRS:
             # get_values()[0]
             if mc_candidate['stimulation'].iloc[0] > float(mc_match.stimulation):
                 
-                mc_candidate_antigene = np.array(mc_candidate.drop(['Class', 'stimulation', 'resources'], axis=1))
+                mc_candidate_antigene = np.array(mc_candidate.drop([self.class_col, 'stimulation', 'resources'], axis=1))
                 if 'resources' in mc_match.columns:
-                    mc_match_antigene = np.array(mc_match.drop(['Class', 'stimulation', 'resources'], axis=1)) 
+                    mc_match_antigene = np.array(mc_match.drop([self.class_col, 'stimulation', 'resources'], axis=1)) 
                 else: 
-                    mc_match_antigene = np.array(mc_match.drop(['Class', 'stimulation'], axis=1)) 
+                    mc_match_antigene = np.array(mc_match.drop([self.class_col, 'stimulation'], axis=1)) 
                 
                 # If the mc_candidate and the mc_match (parent mc) are within a threshold distance of each other, remove
                 # the mc_match, since mc_candidate in this case is closer to the antigene.
                 if self.affinity(vector1=mc_candidate_antigene, vector2=mc_match_antigene) < self.AFFINITY_THRESHOLD*self.AFFINITY_THRESHOLD_SCALAR:
 
-                    mc_class_compare = MC[_class].drop(['Class', 'ARB', 'stimulation'], axis=1)
+                    mc_class_compare = MC[_class].drop([self.class_col, 'ARB', 'stimulation'], axis=1)
                     mc_class_compare = mc_class_compare.reindex(sorted(mc_class_compare.columns), axis=1)
 
-                    mc_match_compare = mc_match.drop(['Class', 'ARB', 'stimulation'], axis=1)
+                    mc_match_compare = mc_match.drop([self.class_col, 'ARB', 'stimulation'], axis=1)
                     mc_match_compare = mc_match_compare.reindex(sorted(mc_match_compare.columns), axis=1)
 
                     mc_match_index = np.unique(np.where(mc_class_compare.to_numpy()==mc_match_compare.to_numpy())[0]).tolist()
@@ -639,13 +642,20 @@ class AIRS:
         
         df_pred = pd.DataFrame({})
 
-        #df_pred['y_pred'] = [x.values[0] for x in [self.classify(np.array(x)) for x in self.test_set.iloc[:, :-1].values]]
+        df_pred['y_pred_knn'] = [x.values[0] for x in [self.classify(np.array(x)) for x in self.test_set.iloc[:, :-1].values]]
         from sklearn.linear_model import LogisticRegression
         logisticRegr = LogisticRegression()
-        self.MC_mass_train = self.MC_mass.drop(['Class', 'ARB', 'stimulation', 'resources'], axis=1)
+        self.MC_mass_train = self.MC_mass.drop([self.class_col, 'ARB', 'stimulation', 'resources'], axis=1)
         self.MC_mass_train = self.MC_mass_train.fillna(self.MC_mass_train.mean())
-        logisticRegr.fit(self.MC_mass_train, self.MC_mass['Class'])
-        df_pred['y_pred'] = logisticRegr.predict(self.test_set.drop(['Class'], axis=1))
+        logisticRegr.fit(self.MC_mass_train, self.MC_mass[self.class_col])
+        df_pred['y_pred'] = logisticRegr.predict(self.test_set.drop([self.class_col], axis=1))
+        
+        # Train reference model
+        logisticRegr = LogisticRegression()
+        logisticRegr.fit(self.train_set.drop([self.class_col], axis=1), self.train_set[self.class_col])
+        df_pred['y_pred_ref'] = logisticRegr.predict(self.test_set.drop([self.class_col], axis=1))
+
+
 
         #print(*map(np.array, self.test_set.iloc[:, :-1].values))
         #pool_obj = multiprocessing.Pool(processes=8)
@@ -664,6 +674,8 @@ class AIRS:
         print(f"Nonfraud fract : {sum(self.test_set.iloc[:, -1] == 0) / self.test_set.shape[0] * 100:.2f} %")
         print(f"Fraud fract : {sum(self.test_set.iloc[:, -1] == 1) / self.test_set.shape[0] * 100:.2f} %")
         print(f"Confusion matrix is {confusion_matrix(df_pred.y_true, df_pred.y_pred)}")
+        print(f"Reference confusion matrix is {confusion_matrix(df_pred.y_true, df_pred.y_pred_ref)}")
+        print(f"KNN confusion matrix is {confusion_matrix(df_pred.y_true, df_pred.y_pred_knn)}")
 
         return self.MC_mass, self.train_set, self.test_set
 
@@ -674,21 +686,32 @@ if __name__ == '__main__':
     # USE-CASE CREDIT CARD FRAUD
     # =========================================================================
     import matplotlib.pyplot as plt
+    # %%
     ARRAY_SIZE = 30  # Features number
     MAX_ITER = 5  # Max iterations to stop training on a given antigene
 
     # Mutation rate for ARBs
     MUTATION_RATE = 0.2
+    iris = True
 
-    # n = 284808
-    # s = 200000 #desired sample size
-    # skip = sorted(random.sample(range(1,n+1), n-s)) #
+    if iris:
+        data = pd.read_csv('data/iris.csv', names=['V1', 'V2', "V3", "V4", 'Class'])#, skiprows=skip)
 
-    data = pd.read_csv('data/creditcard.csv')#, skiprows=skip)
-    data_1 = data[data['Class']==1].copy()#.iloc[:300, :]
-    data_0 = data[data['Class']==0].copy()
-    
-    data = pd.concat([data_0.sample(data_1.shape[0]*1), data_1], axis=0)
+        mapping = {"Iris-setosa": 0, "Iris-versicolor": 1, "Iris-virginica": 2}
+        data = data.replace({"Class": mapping})
+        n_classes = 3
+    else:
+        n = 284808
+        s = 200000 #desired sample size
+        skip = sorted(random.sample(range(1,n+1), n-s)) #
+
+        data = pd.read_csv('data/creditcard.csv')#, skiprows=skip)
+        data_1 = data[data['Class']==1].copy()#.iloc[:300, :]
+        data_0 = data[data['Class']==0].copy()
+        
+        data = pd.concat([data_0.sample(data_1.shape[0]*1), data_1], axis=0)
+        n_classes = 2
+
     plt.figure()
     data.Class.hist(bins=50)
     plt.show()
@@ -697,23 +720,22 @@ if __name__ == '__main__':
 
     airs = AIRS(hyper_clonal_rate=30,
                 clonal_rate=0.8,
-                class_number=2,
+                class_number=n_classes,
                 mc_init_rate=0.4,
-                total_num_resources=20, #10
+                total_num_resources=10, #10
                 affinity_threshold_scalar=0.8,
-                k=13,
+                k=3,
                 test_size=0.3,
                 data=data)
                 #input_data_file='data/creditcard.csv')
-
+    # %%
     mc, df_train, df_test = airs.train()
-    
-    mc.loc[:, 'Class'] += 4
-    df_test.loc[:, 'Class'] += 2
-
+    # %%
+    mc.loc[:, 'Class'] += 6
+    df_test.loc[:, 'Class'] += 3
     df_plot = pd.concat([df_test, mc], axis=0)
 
-    tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
+    tsne = TSNE(n_components=n_classes, verbose=1, perplexity=40, n_iter=300)
     tsne_results = tsne.fit_transform(df_plot.drop(['ARB', 'stimulation', 'Class', 'resources'], axis=1))
 
     df_plot['tsne-2d-one'] = tsne_results[:,0]
@@ -724,30 +746,62 @@ if __name__ == '__main__':
         x="tsne-2d-one",
         y="tsne-2d-two",
         hue="Class",
-        palette=sns.color_palette("husl", 4),
+        palette=sns.color_palette("husl", n_classes*2),
         #markers=['8', 's', 'p', '+', '^', 'o'],
         data=df_plot,
         alpha=0.3)
     plt.title('Memory cells')
     plt.show()
-
+    # %%
     print('Done')
-    # tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
-    # tsne_results = tsne.fit_transform(mc.drop(['ARB', 'stimulation', 'Class', 'resources'], axis=1))
+    tsne = TSNE(n_components=n_classes, verbose=1, perplexity=5, n_iter=1000, learning_rate=20)
+    tsne_results = tsne.fit_transform(mc.drop(['ARB', 'stimulation', 'Class', 'resources'], axis=1))
 
-    # mc['tsne-2d-one'] = tsne_results[:,0]
-    # mc['tsne-2d-two'] = tsne_results[:,1]
+    mc['tsne-2d-one'] = tsne_results[:,0]
+    mc['tsne-2d-two'] = tsne_results[:,1]
     
-    # plt.figure()
-    # sns.scatterplot(
-    #     x="tsne-2d-one",
-    #     y="tsne-2d-two",
-    #     hue="Class",
-    #     palette=sns.color_palette("hls", 2),
-    #     data=mc,
-    #     alpha=0.3)
-    # plt.title('Memory cells')
-    # plt.show()
+    plt.figure()
+    sns.scatterplot(
+        x="tsne-2d-one",
+        y="tsne-2d-two",
+        hue="Class",
+        palette=sns.color_palette("hls", n_classes),
+        data=mc,
+        alpha=0.3)
+    plt.title('Memory cells')
+    plt.show()
+    # %%
+    plt.figure()
+    sns.scatterplot(
+        x="V1",
+        y="V2",
+        hue="Class",
+        palette=sns.color_palette("hls", n_classes*2),
+        data=df_plot,
+        alpha=0.3)
+    plt.title('Memory cells')
+    plt.show()
+#perplexity=20, n_iter=1000, learning_rate=30
+#perplexity=10, n_iter=1000, learning_rate=30
+#perplexity=20, n_iter=1000, learning_rate=10
+#perplexity=20, n_iter=1000, learning_rate=5
+    # %%
+    tsne = TSNE(n_components=n_classes, verbose=1, perplexity=20, n_iter=1000, learning_rate=5)
+    tsne_results = tsne.fit_transform(data)
+
+    data['tsne-2d-one'] = tsne_results[:,0]
+    data['tsne-2d-two'] = tsne_results[:,1]
+    
+    plt.figure()
+    sns.scatterplot(
+        x="tsne-2d-one",
+        y="tsne-2d-two",
+        hue="Class",
+        palette=sns.color_palette("hls", n_classes),
+        data=data,
+        alpha=0.3)
+    plt.title('Raw data')
+    plt.show()
 
     # tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
     # tsne_results = tsne.fit_transform(df_test.drop(['Class'], axis=1))
@@ -786,3 +840,6 @@ if __name__ == '__main__':
 
 
     # print('Done')
+
+
+# %%
