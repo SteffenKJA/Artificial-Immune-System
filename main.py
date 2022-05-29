@@ -100,23 +100,6 @@ import seaborn as sns
 # Substitute AIRS.affinity with cy_affinity
 
 
-class ARB:
-    """ARB (Artificial Recognition Ball) class
-    Args:
-        vector (list) : list of features
-        _class (integer) : the class of the previous features
-    """
-
-    def __init__(self, vector=None, _class=None):
-        if vector is None:
-            self.vector = [random.random() for _ in range(ARRAY_SIZE)]
-        else:
-            self.vector = np.array(vector)
-        self._class = _class
-        self.stimulation = float('-inf')
-        self.resources = 0
-
-
 class AIRS:
     """AIRS (Artificial Immune Recognition System) class
     Main class for this algorithm
@@ -184,51 +167,30 @@ class AIRS:
         
 
     @staticmethod
-    def affinity(vector1: List, vector2: List) -> float:
+    def affinity(vector1: np.array, vector2: np.array) -> float:
         """
         Compute the affinity (Normalized!! distance) between two features
         vectors.
+        Lower affinity values corresponds to stronger affinity bond (somewhat counterintuitively).
         
         Parameters
         --------------
-        vector1: list
+        vector1:
             First features vector
-        vector2: list
+        vector2:
             Second features vector
         
         Returns
         --------------
-            The affinity between the two vectors [0-1]
+            The affinity scalar value between the two vectors [0-1]
         """
 
         dist = np.linalg.norm(vector1 - vector2)
         
-        return dist/(1 + dist)
+        return dist/(1.0 + dist)
 
 
-    def _stimulate_apply(self, cell, pattern):
-        """
-        The higher the affinity, the lower the stimulation.
-
-        Parameters
-        ----------
-        pattern : TYPE
-            DESCRIPTION.
-
-        Returns
-        -------
-        TYPE
-            DESCRIPTION.
-
-        """
-        
-        cell['stimulation'] = 1 - self.affinity(vector1=pattern, vector2=cell[self.cols_features].to_numpy())
-        if pd.isna(cell['stimulation']):
-            cell['stimulation'] = 1
- 
-        return cell['stimulation']
-
-    def _stimulate_val(self, cell, pattern):
+    def _stimulate(self, cell, pattern):
         """
         The higher the affinity, the lower the stimulation.
 
@@ -355,7 +317,7 @@ class AIRS:
 
         seed_cells = self.train_set.sample(frac=self.MC_INIT_RATE)
         seed_cells['stimulation'] = 0#float('-inf')
-        seed_cells['ARB'] = 0
+        seed_cells['ARB'] = 0  # Denotes if the cell is an ARB or not.
         seed_cells = seed_cells.reindex(columns=seed_cells.columns.difference(['stimulation', self.class_col]).tolist() + ['stimulation', self.class_col])
 
         class_mask = seed_cells[self.class_col] == 1
@@ -406,7 +368,7 @@ class AIRS:
 
         # for c in self.MC.keys():
         #     df_vote_c = self.MC.get(c).copy()
-        #     df_vote_c['stimulation'] = df_vote_c.apply(self._stimulate_val, pattern=antigene, axis=1)
+        #     df_vote_c['stimulation'] = df_vote_c.apply(self._stimulate, pattern=antigene, axis=1)
 
         #     df_vote = df_vote.append(df_vote_c)
 
@@ -488,7 +450,7 @@ class AIRS:
 
             mc_match['ARB'] = 1
             # The stimulation between MC candidate and the incoming antigene.
-            mc_match['stimulation'] = self._stimulate_val(cell=mc_match, pattern=antigene)
+            mc_match['stimulation'] = self._stimulate(cell=mc_match, pattern=antigene)
             AB[_class] = pd.concat([AB[_class], mc_match], axis=0)  # add the mc_match to ARBs
 
             stim = mc_match['stimulation']
@@ -519,7 +481,7 @@ class AIRS:
                     min_stim_ab = 0
                     max_stim_ab = 0
                 else:
-                    AB[_class]['stimulation'] = AB[_class].apply(self._stimulate_val, pattern=antigene, axis=1)
+                    AB[_class]['stimulation'] = AB[_class].apply(self._stimulate, pattern=antigene, axis=1)
                     avgStim = AB[_class]['stimulation'].sum() / AB[_class].shape[0]
 
                     try:
