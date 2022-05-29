@@ -41,7 +41,10 @@ Implementation notes:
 
 Glossary:
     - Affinity is the distance between two cells. In code, it is the 
-    (Normalized!! distance) between two features vectors.
+    (Normalized!! distance) between two features vectors. Essentially, the higher the affinity, the lower the
+    relation between the cells. 
+    NOTE: Counterintuitive, as small affinity values (closer to 0) indicate strong affinity between antibody and antigen. 
+    This is not an error, but the official definition in AIRS V2 paper.
     - Affinity threshold of the memory cells - this is this treshold where the
     immune system is activated.
     
@@ -79,23 +82,22 @@ Parameters:
 # %%
 import random
 import time
+
+import numpy as np
+import pandas as pd
+from copy import copy
+from typing import Dict, List
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
 from sklearn.metrics import confusion_matrix
-import pandas as pd
 from scipy.spatial.distance import pdist
-import numpy as np
 from sklearn.neighbors import NearestNeighbors
-import tinyarray as ta
-import os
-#os.system('python setup.py build_ext --inplace')
-#from func import cy_affinity
-import multiprocessing
-from copy import copy
-from typing import Dict
-# Substitute AIRS.affinity with cy_affinity
 from sklearn.manifold import TSNE
 import seaborn as sns
+
+#os.system('python setup.py build_ext --inplace')
+#from func import cy_affinity
+# Substitute AIRS.affinity with cy_affinity
 
 
 class ARB:
@@ -115,22 +117,6 @@ class ARB:
         self.resources = 0
 
 
-class Cell:
-    """Cell class
-    Args:
-        vector (list) : list of features
-        _class (integer) : the class of the previous features
-    """
-
-    def __init__(self, vector=None, _class=None):
-        
-        assert vector is not None, 'Cannot create cell with no features'
-
-        self.vector = np.array(vector)  # Vector containing all cell features.
-        self._class = _class  # Cell class 
-        self.stimulation = float('-inf')
-
-
 class AIRS:
     """AIRS (Artificial Immune Recognition System) class
     Main class for this algorithm
@@ -145,7 +131,7 @@ class AIRS:
     clonal_rate: float
         Define the number of ressources an ARB can obtain.
     class_number: int
-        The number of classes (2 for fraud detection)
+        The number of classes (e.g, 2 for fraud detection)
     mc_init_rate: float
         Define the number of training data to be copied in memory cells
     total_num_resources: float
@@ -198,7 +184,7 @@ class AIRS:
         
 
     @staticmethod
-    def affinity(vector1, vector2):
+    def affinity(vector1: List, vector2: List) -> float:
         """
         Compute the affinity (Normalized!! distance) between two features
         vectors.
@@ -476,7 +462,6 @@ class AIRS:
             
             if len(MC[_class]) == 0:
                 # If this is the first row in dataset
-               # mc_match = Cell(vector=antigene, _class=_class)
                 mc_match = pd.DataFrame(row).T
                 mc_match['stimulation'] = 0.0 #float('-inf')
                 mc_match['ARB'] = 0
