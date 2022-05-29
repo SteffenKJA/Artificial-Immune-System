@@ -11,7 +11,7 @@
     * ARB generation 
     * Competition for resources
     * (Potential) Candidate memory introduction to the set of Cells 
-    * K-Nearest Neighbor approach for classification
+    * K-Nearest Neighbors approach for classification
 
 # Algorithm parameters
     * Hyper Clonal Rate : Define the number of clones an ARB is allowed to produce
@@ -25,7 +25,7 @@
     * Mutation rate : The probability for a feature (in any given antigene) to mutate
     
 # Accuracy
-Mean accuracy after 1000 executions is : ``` 92.54 %```
+Mean accuracy after 1000 executions is : ``` 93,78 %```
 
 In ``` 44.06 seconds```
 
@@ -38,7 +38,7 @@ With this parameters :
     * Mc Init Rate : 0.4 
     * Total Num Resources : 10
     * Affinity Threshold Scalar : 0.8
-    * K : 6
+    * K : 3
     * Test Size : 0.4
     * Mutation rate : 0.2
 ```
@@ -49,7 +49,16 @@ Execution time : 0.0389 seconds
 Accuracy : 98.33 %
 ``` 
 
+# Some notes 
+The algorithm is kind-of a mix between KNearestNeighbors and Genetic Algorithms. The Memory Cells (MC) that are used for final classification tend better represent the data, by choosing data points that are closer to their true classes (the true distribution).
+The picture below shows the separation and the shape of data point using T-SNE representation. The algorithm tends to 
+generate new points to better represent the data and remove outliers (points from a certain class located in other ones).
+
+![alt text](https://github.com/AghilesAzzoug/Artificial-Immune-System/blob/master/tsne_img.png)
+ 
+
 # Requirements
 
 * Python >= 3
+
 

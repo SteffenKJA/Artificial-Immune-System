@@ -604,6 +604,7 @@ if __name__ == '__main__':
     MAX_ITER = 5  # Max iterations to stop training on a given antigene
 
     # Mutation rate for ARBs
+    # todo: pretty bad implementation, structure it.
     MUTATION_RATE = 0.2
     iris = True
 
