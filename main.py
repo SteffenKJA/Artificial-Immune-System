@@ -86,14 +86,16 @@ import time
 import numpy as np
 import pandas as pd
 from copy import copy
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
 from sklearn.metrics import confusion_matrix
 from scipy.spatial.distance import pdist
 from sklearn.neighbors import NearestNeighbors
+from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import TSNE
 import seaborn as sns
+import matplotlib.pyplot as plt
 
 #os.system('python setup.py build_ext --inplace')
 #from func import cy_affinity
@@ -164,10 +166,8 @@ class AIRS:
         else:
             self.train_set = train_set
             self.test_set = test_set
-        
 
-    @staticmethod
-    def affinity(vector1: np.array, vector2: np.array) -> float:
+    def _affinity(vector1: np.array, vector2: np.array) -> float:
         """
         Compute the affinity (Normalized!! distance) between two features
         vectors.
@@ -190,9 +190,9 @@ class AIRS:
         return dist/(1.0 + dist)
 
 
-    def _stimulate(self, cell, pattern):
+    def _stimulate(self, cell: pd.DataFrame, pattern: np.array) -> float:
         """
-        The higher the affinity, the lower the stimulation.
+        The higher the affinity value, the lower the stimulation.
 
         Parameters
         ----------
@@ -205,13 +205,14 @@ class AIRS:
             DESCRIPTION.
 
         """
-        affinity_val = self.affinity(vector1=cell[self.cols_features].to_numpy(), vector2=pattern)
+        affinity_val = self._affinity(vector1=cell[self.cols_features].to_numpy(), vector2=pattern)
 
         if pd.isna(affinity_val):
-            affinity_val = 1 
+            affinity_val = 1
+
         return 1 - affinity_val
 
-    def _mutate(self, cell):
+    def _mutate(self, cell: pd.DataFrame) -> Tuple(pd.DataFrame, bool):
         """
         Mutate the cell. All features will be randomly mutated, at the chance
         of MUTATION_RATE.
@@ -255,7 +256,7 @@ class AIRS:
         return cell, mutated
 
 
-    def _train_test_split(self, open_file=True):
+    def _train_test_split(self) -> Tuple(pd.DataFrame):
         
         df = self.data
 
@@ -272,7 +273,7 @@ class AIRS:
         return train_set, test_set
 
 
-    def calculate_affinity_threshold(self):
+    def _calculate_affinity_threshold(self) -> None:
         """
         Calculates euclidian distance between the datapoints.
         Since we can have a large nr. of features and a very large nr. of 
@@ -294,7 +295,7 @@ class AIRS:
         print(f"Affinity threshold found as {self.AFFINITY_THRESHOLD}!")
 
 
-    def init_MC(self, MC):
+    def _init_MC(self, MC: Dict) -> None:
         """ 
         Initialize the memory set pool. Appended as rows into the empty
         dataframes in MC dict. Two dataframes are seperately composed of the
@@ -327,57 +328,43 @@ class AIRS:
         MC[1] = MC[1].append(seed_cells[class_mask])
 
 
-    def argminARB(self, AB, _class):
+    def _min_ressource_arb(self, AB: Dict, _class: int) -> Tuple(pd.Series, int):
         """Get the ARB with the minimum amount of resources
         :param AB: The Artificial Recognition Balls set
         :param _class: the class of the ARBs
         :return: The ARB with the lower amount of resources and its index
         """
-        minRes = 1.0
-        ab = None
-        abIndex = None
+        min_res = 1.0
+        arb = None
+        arb_index = None
         
         for i in range(len(AB[_class])):
-            if AB[_class].iloc[i, :].resources <= minRes:
-                minRes = AB[_class].iloc[i, :].resources
-                ab = AB[_class].iloc[i, :]
-                abIndex = i
+            if AB[_class].iloc[i, :].resources <= min_res:
+                min_res = AB[_class].iloc[i, :].resources
+                arb = AB[_class].iloc[i, :]
+                arb_index = i
 
-        return ab, abIndex
+        return arb, arb_index
 
-    def getMcCandidate(self, AB: Dict, _class: int) -> pd.DataFrame:
+    def _get_mc_candidate(self, AB: Dict, _class: int) -> pd.DataFrame:
         """Get the higher stimulation ARB to be (eventually) added to the memory cells pool
         :param AB: The Artificial Recognition Balls set
         :param _class: the class of the ARBs
         :return: Higher stimulation ARB of the given class
         """
 
-        maxStim = AB[_class].stimulation.max()
-        ab = AB[_class][AB[_class]['stimulation'] == maxStim]
+        max_stim = AB[_class].stimulation.max()
+        arb = AB[_class][AB[_class]['stimulation'] == max_stim]
 
-        if ab.shape[0] > 1:
-            ab = pd.DataFrame(ab.iloc[0, :]).T
+        if arb.shape[0] > 1:
+            arb = pd.DataFrame(arb.iloc[0, :]).T
 
-        assert isinstance(ab, pd.DataFrame)
+        assert isinstance(arb, pd.DataFrame)
         
-        return ab
+        return arb
 
-    def classify(self, antigene):
+    def _classify(self, antigene: pd.DataFrame) -> float:
         
-        # df_vote = pd.DataFrame({})
-
-        # for c in self.MC.keys():
-        #     df_vote_c = self.MC.get(c).copy()
-        #     df_vote_c['stimulation'] = df_vote_c.apply(self._stimulate, pattern=antigene, axis=1)
-
-        #     df_vote = df_vote.append(df_vote_c)
-
-        # df_vote.sort_values(by='stimulation', ascending=False)
-        
-        # self.K = min(self.K, df_vote.shape[0])
-
-        # df_allowed_voters = df_vote.iloc[:self.K, :].copy()
-        # df_allowed_voters['class_count'] = df_allowed_voters.groupby(self.class_col)['stimulation'].transform('count')
         df_knn = self.MC_mass.drop(['ARB', 'stimulation', self.class_col, 'resources'], axis=1)
         nbrs = NearestNeighbors(n_neighbors=self.K, algorithm='ball_tree').fit(df_knn.to_numpy())
         distances, indices = nbrs.kneighbors([antigene])
@@ -392,12 +379,12 @@ class AIRS:
         else:
             return np.nan
 
-    def train(self):
+    def train(self) -> Tuple(pd.DataFrame):
         """Train AIRS on the training dataset"""
         start = time.time()
 
         # Calculate the affinity threshold of the memory cells
-        self.calculate_affinity_threshold()
+        self._calculate_affinity_threshold()
         # The actual affinity threshold is modified by the input value,
         # AFFINITY_THRESHOLD_SCALAR
         self.AFFINITY_THRESHOLD_SCALED = self.AFFINITY_THRESHOLD * self.AFFINITY_THRESHOLD_SCALAR
@@ -408,7 +395,7 @@ class AIRS:
         AB = {_class_int: pd.DataFrame() for _class_int in range(self.CLASS_NUMBER)}
 
         # MC Initialisation
-        self.init_MC(MC)
+        self._init_MC(MC)
 
         #for row in self.train_set:
         self.train_set.reset_index(drop=True, inplace=True)
@@ -495,7 +482,6 @@ class AIRS:
                         min_stim_ab = 0
                         max_stim_ab = 0
 
-
                 MIN_STIM = 1.0
                 MAX_STIM = 0.0
 
@@ -510,9 +496,7 @@ class AIRS:
                 MIN_STIM = min([MIN_STIM, min_stim_ab])
                 MAX_STIM = max([MAX_STIM, max_stim_ab])
 
-                #if MIN_STIM == MAX_STIM:
                 if sum([AB[c].shape[0] for c in AB.keys()]) < 2:
-                 #   print(f"OBS! 0<stim({stim})<1, keeping MIN_STEM and MAX_STEM at default values")
                     MIN_STIM = 1.0
                     MAX_STIM = 0.0                    
 
@@ -523,19 +507,15 @@ class AIRS:
                         AB[c]['stimulation'] = (AB[c]['stimulation'] - MIN_STIM) / (MAX_STIM - MIN_STIM)
                         AB[c]['resources'] = AB[c]['stimulation'] * self.CLONAL_RATE
 
-                #print([x.resources for x in AB[_class]])
                 if AB[_class].shape[0] > 0:
                     resAlloc = AB[_class].resources.sum()
                 else:
                     resAlloc = 0
 
-                #resAlloc = sum([x.resources for x in AB[_class]])
-                #resAlloc = [*map(np.sum, [[x.resources for x in AB[_class]]])][0]
-
                 numResAllowed = self.TOTAL_NUM_RESOURCES
                 while resAlloc > numResAllowed:
                     numResRemove = resAlloc - numResAllowed
-                    abRemove, abRemoveIndex = self.argminARB(AB=AB, _class=_class)
+                    abRemove, abRemoveIndex = self._min_ressource_arb(AB=AB, _class=_class)
                     AB[_class].reset_index(drop=True, inplace=True)
                     
                     if abRemove.resources <= numResRemove:
@@ -543,26 +523,24 @@ class AIRS:
                         resAlloc -= abRemove.resources
                     else:
                         AB[_class].loc[AB[_class].index == abRemoveIndex, 'resources'] -= numResRemove
-                        #AB[_class].iloc[abRemoveIndex, :].resources -= numResRemove
                         resAlloc -= numResRemove
-               # print(f"avgStim is {avgStim}")
                 if (avgStim > self.AFFINITY_THRESHOLD) or (iterations >= MAX_ITER):
                     break
 
-            mc_candidate = self.getMcCandidate(AB=AB, _class=_class)
+            mc_candidate = self._get_mc_candidate(AB=AB, _class=_class)
 
             # get_values()[0]
             if mc_candidate['stimulation'].iloc[0] > float(mc_match.stimulation):
                 
-                mc_candidate_antigene = np.array(mc_candidate.drop([self.class_col, 'stimulation', 'resources'], axis=1))
+                mc_candidate_pattern = np.array(mc_candidate.drop([self.class_col, 'stimulation', 'resources'], axis=1))
                 if 'resources' in mc_match.columns:
-                    mc_match_antigene = np.array(mc_match.drop([self.class_col, 'stimulation', 'resources'], axis=1)) 
+                    mc_match_pattern = np.array(mc_match.drop([self.class_col, 'stimulation', 'resources'], axis=1)) 
                 else: 
-                    mc_match_antigene = np.array(mc_match.drop([self.class_col, 'stimulation'], axis=1)) 
+                    mc_match_pattern = np.array(mc_match.drop([self.class_col, 'stimulation'], axis=1)) 
                 
                 # If the mc_candidate and the mc_match (parent mc) are within a threshold distance of each other, remove
                 # the mc_match, since mc_candidate in this case is closer to the antigene.
-                if self.affinity(vector1=mc_candidate_antigene, vector2=mc_match_antigene) < self.AFFINITY_THRESHOLD*self.AFFINITY_THRESHOLD_SCALAR:
+                if self._affinity(vector1=mc_candidate_pattern, vector2=mc_match_pattern) < self.AFFINITY_THRESHOLD*self.AFFINITY_THRESHOLD_SCALAR:
 
                     mc_class_compare = MC[_class].drop([self.class_col, 'ARB', 'stimulation'], axis=1)
                     mc_class_compare = mc_class_compare.reindex(sorted(mc_class_compare.columns), axis=1)
@@ -589,8 +567,9 @@ class AIRS:
         
         df_pred = pd.DataFrame({})
 
-        df_pred['y_pred_knn'] = [x.values[0] for x in [self.classify(np.array(x)) for x in self.test_set.iloc[:, :-1].values]]
-        from sklearn.linear_model import LogisticRegression
+        df_pred['y_pred_knn'] = [x.values[0] for x in [self._classify(np.array(x)) for x in self.test_set.iloc[:, :-1].values]]
+        
+        # Use other classifier
         logisticRegr = LogisticRegression()
         self.MC_mass_train = self.MC_mass.drop([self.class_col, 'ARB', 'stimulation', 'resources'], axis=1)
         self.MC_mass_train = self.MC_mass_train.fillna(self.MC_mass_train.mean())
@@ -602,18 +581,9 @@ class AIRS:
         logisticRegr.fit(self.train_set.drop([self.class_col], axis=1), self.train_set[self.class_col])
         df_pred['y_pred_ref'] = logisticRegr.predict(self.test_set.drop([self.class_col], axis=1))
 
-
-
-        #print(*map(np.array, self.test_set.iloc[:, :-1].values))
-        #pool_obj = multiprocessing.Pool(processes=8)
-
-#        df_pred['y_pred'] = [*map(self.classify, [*map(np.array, self.test_set.iloc[:, :-1].values)])]
-        #df_pred['y_pred'] = pool_obj.map(self.classify, pool_obj.map(np.array, self.test_set.iloc[:, :-1]))
-#        df_pred['y_pred'] = pool_obj.map(self.classify, pool_obj.map(np.array, self.test_set.iloc[:, :-1].values))
         print(df_pred['y_pred'].shape)
         print(self.test_set.iloc[:, -1].shape)
         df_pred['y_true'] = self.test_set.iloc[:, -1].values
-        #n_correct = [*map(np.sum, [df_pred.y_pred == df_pred.y_true])][0]
         n_correct = np.sum([df_pred.y_pred == df_pred.y_true])
 
         print("Execution time : {:2.4f} seconds".format(time.time() - start))
@@ -629,10 +599,6 @@ class AIRS:
 
 if __name__ == '__main__':
 
-    # =========================================================================
-    # USE-CASE CREDIT CARD FRAUD
-    # =========================================================================
-    import matplotlib.pyplot as plt
     # %%
     ARRAY_SIZE = 30  # Features number
     MAX_ITER = 5  # Max iterations to stop training on a given antigene
@@ -648,6 +614,7 @@ if __name__ == '__main__':
         data = data.replace({"Class": mapping})
         n_classes = 3
     else:
+        # Credit card fraud dataset
         n = 284808
         s = 200000 #desired sample size
         skip = sorted(random.sample(range(1,n+1), n-s)) #
@@ -674,7 +641,6 @@ if __name__ == '__main__':
                 k=3,
                 test_size=0.3,
                 data=data)
-                #input_data_file='data/creditcard.csv')
     # %%
     mc, df_train, df_test = airs.train()
     # %%
@@ -694,7 +660,6 @@ if __name__ == '__main__':
         y="tsne-2d-two",
         hue="Class",
         palette=sns.color_palette("husl", n_classes*2),
-        #markers=['8', 's', 'p', '+', '^', 'o'],
         data=df_plot,
         alpha=0.3)
     plt.title('Memory cells')
@@ -728,10 +693,6 @@ if __name__ == '__main__':
         alpha=0.3)
     plt.title('Memory cells')
     plt.show()
-#perplexity=20, n_iter=1000, learning_rate=30
-#perplexity=10, n_iter=1000, learning_rate=30
-#perplexity=20, n_iter=1000, learning_rate=10
-#perplexity=20, n_iter=1000, learning_rate=5
     # %%
     tsne = TSNE(n_components=n_classes, verbose=1, perplexity=20, n_iter=1000, learning_rate=5)
     tsne_results = tsne.fit_transform(data)
@@ -749,44 +710,3 @@ if __name__ == '__main__':
         alpha=0.3)
     plt.title('Raw data')
     plt.show()
-
-    # tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
-    # tsne_results = tsne.fit_transform(df_test.drop(['Class'], axis=1))
-
-    # df_test['tsne-2d-one'] = tsne_results[:,0]
-    # df_test['tsne-2d-two'] = tsne_results[:,1]
-    
-    # plt.figure()
-    # sns.scatterplot(
-    #     x="tsne-2d-one",
-    #     y="tsne-2d-two",
-    #     hue="Class",
-    #     palette=sns.color_palette("hls", 2),
-    #     data=df_test,
-    #     alpha=0.3)
-    # plt.title('Test data raw')
-    # plt.show()
-
-    # tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
-    # tsne_results = tsne.fit_transform(df_train.drop(['Class'], axis=1))
-
-    # df_train['tsne-2d-one'] = tsne_results[:,0]
-    # df_train['tsne-2d-two'] = tsne_results[:,1]
-    
-    # plt.figure()
-    # sns.scatterplot(
-    #     x="tsne-2d-one",
-    #     y="tsne-2d-two",
-    #     hue="Class",
-    #     palette=sns.color_palette("hls", 2),
-    #     data=df_train,
-    #     alpha=0.3)
-
-    # plt.title("Train data raw")
-    # plt.show()
-
-
-    # print('Done')
-
-
-# %%
