@@ -80,13 +80,13 @@ Parameters:
 @authors: Steffen Kjær Jacobsen and Azzoug Aghiles.
 """
 # %%
+from ctypes import Union
 import random
 import time
 
 import numpy as np
 import pandas as pd
-from copy import copy
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
 from sklearn.metrics import confusion_matrix
@@ -167,7 +167,7 @@ class AIRS:
             self.train_set = train_set
             self.test_set = test_set
 
-    def _affinity(vector1: np.array, vector2: np.array) -> float:
+    def _affinity(self, vector1: np.array, vector2: np.array) -> float:
         """
         Compute the affinity (Normalized!! distance) between two features
         vectors.
@@ -212,7 +212,7 @@ class AIRS:
 
         return 1 - affinity_val
 
-    def _mutate(self, cell: pd.DataFrame) -> Tuple(pd.DataFrame, bool):
+    def _mutate(self, cell: pd.DataFrame) -> Tuple:#[Union[pd.DataFrame, bool]]:
         """
         Mutate the cell. All features will be randomly mutated, at the chance
         of MUTATION_RATE.
@@ -239,14 +239,14 @@ class AIRS:
         n_mutated = np.where(decision_mask, 1, 0).sum()
         features_to_mutate = np.array(self.cols_features)[decision_mask[0]]
 
-        if cell['ARB'].iloc[0] == 1:
-           # cell[self.cols_features][decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
-            #cell.iloc[:, decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
-            cell.loc[:, features_to_mutate] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
-        else:
-            #cell[self.cols_features][decision_mask[0]] = np.random.rand(1, n_mutated)[0]
-            #cell.iloc[:, decision_mask[0]] = np.random.rand(1, n_mutated)[0]
-            cell.loc[:, features_to_mutate] = np.random.rand(1, n_mutated)[0]
+        # if cell['ARB'].iloc[0] == 1:
+        #    # cell[self.cols_features][decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
+        #     #cell.iloc[:, decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
+        #     cell.loc[:, features_to_mutate] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
+        # else:
+        #     #cell[self.cols_features][decision_mask[0]] = np.random.rand(1, n_mutated)[0]
+        #     #cell.iloc[:, decision_mask[0]] = np.random.rand(1, n_mutated)[0]
+        cell.loc[:, features_to_mutate] = np.random.rand(1, n_mutated)[0]
 
         if n_mutated > 0:
             mutated = True
@@ -256,7 +256,7 @@ class AIRS:
         return cell, mutated
 
 
-    def _train_test_split(self) -> Tuple(pd.DataFrame):
+    def _train_test_split(self) -> Tuple[pd.DataFrame]:
         
         df = self.data
 
@@ -328,7 +328,7 @@ class AIRS:
         MC[1] = MC[1].append(seed_cells[class_mask])
 
 
-    def _min_ressource_arb(self, AB: Dict, _class: int) -> Tuple(pd.Series, int):
+    def _min_ressource_arb(self, AB: Dict, _class: int) -> Tuple:#[Union[pd.Series, int]]:
         """Get the ARB with the minimum amount of resources
         :param AB: The Artificial Recognition Balls set
         :param _class: the class of the ARBs
@@ -379,7 +379,7 @@ class AIRS:
         else:
             return np.nan
 
-    def train(self) -> Tuple(pd.DataFrame):
+    def train(self) -> Tuple[pd.DataFrame]:
         """Train AIRS on the training dataset"""
         start = time.time()
 
