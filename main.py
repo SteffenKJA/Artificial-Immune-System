@@ -424,20 +424,21 @@ class AIRS:
                 # be in the mass center, since it is a random antigene as reference point (or rather, the
                 # mc closests to any of the reference antigene). This mass center tendency means that we effectively
                 # remove outliers and concentrate our MCs of a class near the density center of the antigenes of a given class.
-                best_stim = 0
-                #mc_match = pd.DataFrame(row).T
 
+                # NOTE: Change algo here, appears to a bug from original repo. 
+                # We should find the max stimulation to the current antigen, not use old stimulation values, relating to
+                # past antigens.
+                MC[_class]['stimulation'] = MC[_class].apply(self._stimulate, pattern=antigene, axis=1)  # NOTE: New algo line
+                
                 max_stim = MC[_class].stimulation.max()
-                if (max_stim >= best_stim): # or (MC[_class].shape[0] == 1)
-                    best_stim = max_stim
-                    mc_match = pd.DataFrame(MC[_class][MC[_class].stimulation == max_stim])
+                mc_match = pd.DataFrame(MC[_class][MC[_class].stimulation == max_stim])
 
-                    if mc_match.shape[0] > 1:
-                        mc_match = pd.DataFrame(mc_match.iloc[0, :]).T
+                if mc_match.shape[0] > 1:
+                    mc_match = pd.DataFrame(mc_match.iloc[0, :]).T
 
             mc_match['ARB'] = 1
             # The stimulation between MC candidate and the incoming antigene.
-            mc_match['stimulation'] = self._stimulate(cell=mc_match, pattern=antigene)
+            #mc_match['stimulation'] = self._stimulate(cell=mc_match, pattern=antigene)
             AB[_class] = pd.concat([AB[_class], mc_match], axis=0)  # add the mc_match to ARBs
 
             stim = mc_match['stimulation']
@@ -618,7 +619,7 @@ if __name__ == '__main__':
         # Credit card fraud dataset
         n = 284808
         s = 200000 #desired sample size
-        skip = sorted(random.sample(range(1,n+1), n-s)) #
+        skip = sorted(random.sample(range(1, n+1), n - s)) #
 
         data = pd.read_csv('data/creditcard.csv')#, skiprows=skip)
         data_1 = data[data['Class']==1].copy()#.iloc[:300, :]
@@ -630,8 +631,6 @@ if __name__ == '__main__':
     plt.figure()
     data.Class.hist(bins=50)
     plt.show()
-
-    # Very low nr of fraud cases, upsample cases.
 
     airs = AIRS(hyper_clonal_rate=30,
                 clonal_rate=0.8,
@@ -645,10 +644,10 @@ if __name__ == '__main__':
     # %%
     mc, df_train, df_test = airs.train()
     # %%
-    mc.loc[:, 'Class'] += 6
-    df_test.loc[:, 'Class'] += 3
-    df_plot = pd.concat([df_test, mc], axis=0)
-
+    mc.loc[:, 'Class'] += n_classes
+    df_plot_train = pd.concat([df_train, mc], axis=0).reset_index(drop=True)
+    df_plot = pd.concat([df_test, mc], axis=0).reset_index(drop=True)
+    plot_cols = data.columns
     tsne = TSNE(n_components=n_classes, verbose=1, perplexity=40, n_iter=300)
     tsne_results = tsne.fit_transform(df_plot.drop(['ARB', 'stimulation', 'Class', 'resources'], axis=1))
 
@@ -711,3 +710,33 @@ if __name__ == '__main__':
         alpha=0.3)
     plt.title('Raw data')
     plt.show()
+
+    # plt.figure()
+    # sns.pairplot(df_plot, hue="Class", cmap={"hls", 6}) , #markers=["o", "s", "D"])
+    # plt.show
+    df_plot['Class'] = df_plot['Class'].astype(int)
+    for _class in range(n_classes):
+        df_plot_tmp = df_plot[df_plot.Class.isin([_class, _class + n_classes])].copy()
+        df_plot_tmp['Class'] = df_plot_tmp['Class'].map('Class{}'.format)
+
+        g = sns.PairGrid(df_plot_tmp[plot_cols], hue="Class") #hue_kws={"cmap":['Blues', 'Greens']})
+        g.map_upper(sns.kdeplot, shade=True, shade_lowest=False, alpha=0.7)
+        g.map_lower(sns.scatterplot, alpha=0.7) 
+        g.map_diag(sns.distplot)
+        plt.legend()
+        plt.title('MC vs test set')
+        plt.show()
+
+    # %%
+    df_plot_train['Class'] = df_plot_train['Class'].astype(int)
+    for _class in range(n_classes):
+        df_plot_tmp = df_plot_train[df_plot_train.Class.isin([_class, _class + n_classes])].copy()
+        df_plot_tmp['Class'] = df_plot_tmp['Class'].map('Class{}'.format)
+
+        g = sns.PairGrid(df_plot_tmp[plot_cols], hue="Class") #hue_kws={"cmap":['Blues', 'Greens']})
+        g.map_upper(sns.kdeplot, shade=True, shade_lowest=False, alpha=0.7)
+        g.map_lower(sns.scatterplot, alpha=0.7) 
+        g.map_diag(sns.distplot)
+        plt.legend()
+        plt.title('MC vs train set')
+        plt.show()
