@@ -77,16 +77,20 @@ Parameters:
     mc_init_rate: Fraction of memory cells relative to the input training
                   set number of cells (number of rows).
 
+
+TODO:
+    - Unittest _affinity(), to ensure that it is always between 0 and 1.
+
 @authors: Steffen Kjær Jacobsen and Azzoug Aghiles.
 """
 # %%
-from ctypes import Union
 import random
 import time
 
 import numpy as np
 import pandas as pd
 from typing import Dict, Tuple
+from sklearn import metrics
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
 from sklearn.metrics import confusion_matrix
@@ -166,10 +170,16 @@ class AIRS:
         else:
             self.train_set = train_set
             self.test_set = test_set
+        self.train_set = self.train_set.reset_index(drop=True)
+        self.train_set_size = self.train_set.shape[0]
+        self.feature_mins = self.train_set.drop([class_col], axis=1).min().to_numpy() 
+        self.feature_maxs = self.train_set.drop([class_col], axis=1).max().to_numpy() 
+        self.feature_dimension_scales = self.feature_maxs - self.feature_mins
+        self.train_set_max_vector_mag = np.linalg.norm(self.feature_dimension_scales)
 
     def _affinity(self, vector1: np.array, vector2: np.array) -> float:
         """
-        Compute the affinity (Normalized!! distance) between two features
+        Compute the affinity (normalized distance) between two features
         vectors.
         Lower affinity values corresponds to stronger affinity bond (somewhat counterintuitively).
         
@@ -184,10 +194,12 @@ class AIRS:
         --------------
             The affinity scalar value between the two vectors [0-1]
         """
-
-        dist = np.linalg.norm(vector1 - vector2)
         
-        return dist/(1.0 + dist)
+        # Distance, normalized to max equally to the unit vector in train set space
+        dist = np.linalg.norm((vector1 - vector2)/self.train_set_max_vector_mag)
+        
+        # Scaled to 0 to 1 values.
+        return dist
 
 
     def _stimulate(self, cell: pd.DataFrame, pattern: np.array) -> float:
@@ -238,7 +250,7 @@ class AIRS:
 
         n_mutated = np.where(decision_mask, 1, 0).sum()
         features_to_mutate = np.array(self.cols_features)[decision_mask[0]]
-
+        mutated_feature_values = [random.uniform(min_feature, max_feature) for min_feature, max_feature in zip(self.feature_mins[decision_mask[0]], self.feature_maxs[decision_mask[0]])] 
         # if cell['ARB'].iloc[0] == 1:
         #    # cell[self.cols_features][decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
         #     #cell.iloc[:, decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
@@ -246,8 +258,8 @@ class AIRS:
         # else:
         #     #cell[self.cols_features][decision_mask[0]] = np.random.rand(1, n_mutated)[0]
         #     #cell.iloc[:, decision_mask[0]] = np.random.rand(1, n_mutated)[0]
-        cell.loc[:, features_to_mutate] = np.random.rand(1, n_mutated)[0]
-
+        cell.loc[:, features_to_mutate] = mutated_feature_values
+        # TODO: This mutation scheme adhers to AIRS, change to AIRSV2
         if n_mutated > 0:
             mutated = True
         else:
@@ -278,20 +290,22 @@ class AIRS:
         Calculates euclidian distance between the datapoints.
         Since we can have a large nr. of features and a very large nr. of 
         rows, this is very computationally expensive and should be optimized.
-        
-        Perhaps use Cython.
         """
         print("Now calculating affinity threshold..")
             
         # Affinity threshold must be calculated from a normalized
         # dataframe.
         x = self.train_set.iloc[:, :-1].values  # returns a numpy array
+
         min_max_scaler = preprocessing.MinMaxScaler()
         x_scaled = min_max_scaler.fit_transform(x)
         df = pd.DataFrame(x_scaled)
 
-        self.AFFINITY_THRESHOLD = np.mean(pdist(df.values))
-        
+        # Normalize all pairwise distance values to the unit vector length
+        # Note that both individual features as well as the total vector length has been normalized between 0 and 1. 
+        self.AFFINITY_THRESHOLD = np.mean(pdist(df.values, metric='euclidean')/np.sqrt(self.n_features))
+
+        assert (0 <= self.AFFINITY_THRESHOLD <= 1)
         print(f"Affinity threshold found as {self.AFFINITY_THRESHOLD}!")
 
 
@@ -319,6 +333,7 @@ class AIRS:
         seed_cells = self.train_set.sample(frac=self.MC_INIT_RATE)
         seed_cells['stimulation'] = 0#float('-inf')
         seed_cells['ARB'] = 0  # Denotes if the cell is an ARB or not.
+        # TODO: verify that col order is not scrambled below
         seed_cells = seed_cells.reindex(columns=seed_cells.columns.difference(['stimulation', self.class_col]).tolist() + ['stimulation', self.class_col])
 
         class_mask = seed_cells[self.class_col] == 1
@@ -337,7 +352,7 @@ class AIRS:
         min_res = 1.0
         arb = None
         arb_index = None
-        
+        # TODO: Change to simple min selection in pandas 
         for i in range(len(AB[_class])):
             if AB[_class].iloc[i, :].resources <= min_res:
                 min_res = AB[_class].iloc[i, :].resources
@@ -397,12 +412,8 @@ class AIRS:
         # MC Initialisation
         self._init_MC(MC)
 
-        #for row in self.train_set:
-        self.train_set.reset_index(drop=True, inplace=True)
-        size = self.train_set.shape[0]
-
         for index, row in self.train_set.iterrows():
-            print(f'Training row {index} out of {size}')
+            print(f'Training row {index} out of {self.train_set_size}')
             # Split into featureset (antigene) and target (class)
             antigene, _class = np.array(row[:-1]), int(row[-1])
             
@@ -605,9 +616,8 @@ if __name__ == '__main__':
     MAX_ITER = 5  # Max iterations to stop training on a given antigene
 
     # Mutation rate for ARBs
-    # todo: pretty bad implementation, structure it.
     MUTATION_RATE = 0.2
-    iris = True
+    iris = False
 
     if iris:
         data = pd.read_csv('data/iris.csv', names=['V1', 'V2', "V3", "V4", 'Class'])#, skiprows=skip)
