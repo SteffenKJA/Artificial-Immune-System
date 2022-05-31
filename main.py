@@ -241,6 +241,7 @@ class AIRS:
         None.
 
         """
+        _range = 1 - cell['stimulation'].values[0]
         mutated = False
         # Assign random values controlling the mutation cases.
         mutate_array = np.random.rand(1, self.n_features)
@@ -250,18 +251,17 @@ class AIRS:
 
         n_mutated = np.where(decision_mask, 1, 0).sum()
         features_to_mutate = np.array(self.cols_features)[decision_mask[0]]
-        mutated_feature_values = [random.uniform(min_feature, max_feature) for min_feature, max_feature in zip(self.feature_mins[decision_mask[0]], self.feature_maxs[decision_mask[0]])] 
-        # if cell['ARB'].iloc[0] == 1:
-        #    # cell[self.cols_features][decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
-        #     #cell.iloc[:, decision_mask[0]] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
-        #     cell.loc[:, features_to_mutate] = (7 * np.random.rand(1, n_mutated) + 0.1)[0]
-        # else:
-        #     #cell[self.cols_features][decision_mask[0]] = np.random.rand(1, n_mutated)[0]
-        #     #cell.iloc[:, decision_mask[0]] = np.random.rand(1, n_mutated)[0]
-        cell.loc[:, features_to_mutate] = mutated_feature_values
-        # TODO: This mutation scheme adhers to AIRS, change to AIRSV2
+        normalization_vals = self.feature_maxs[decision_mask[0]]
+        change_to_vals = np.random.rand(1, n_mutated)
+        mutated_values_bottom = np.array([val / normalization_val - _range/2.0 for val, normalization_val in zip(cell.loc[:, features_to_mutate].values[0], normalization_vals)])
+        mutated_values_bottom = np.array([val if val >= 0 else 0 for val in mutated_values_bottom])
+
+        change_to_vals = change_to_vals*_range + mutated_values_bottom 
+        change_to = np.array([val if val <= 1 else 1 for val in change_to_vals[0]])
+
         if n_mutated > 0:
             mutated = True
+            cell.loc[:, features_to_mutate] = change_to*normalization_vals
         else:
             mutated = False
 
@@ -336,11 +336,12 @@ class AIRS:
         # TODO: verify that col order is not scrambled below
         seed_cells = seed_cells.reindex(columns=seed_cells.columns.difference(['stimulation', self.class_col]).tolist() + ['stimulation', self.class_col])
 
-        class_mask = seed_cells[self.class_col] == 1
+        for _class in range(self.CLASS_NUMBER):
+        
+            class_mask = seed_cells[self.class_col] == _class
 
-        # Append seed cells to the correct class
-        MC[0] = MC[0].append(seed_cells[~class_mask])
-        MC[1] = MC[1].append(seed_cells[class_mask])
+            # Append seed cells to the correct class
+            MC[_class] = pd.concat([MC[_class], seed_cells[class_mask]].copy(), axis=0)
 
 
     def _min_ressource_arb(self, AB: Dict, _class: int) -> Tuple:#[Union[pd.Series, int]]:
@@ -385,7 +386,6 @@ class AIRS:
         distances, indices = nbrs.kneighbors([antigene])
         df_allowed_voters = self.MC_mass.iloc[indices[0], :].copy()
         df_allowed_voters['class_count'] = df_allowed_voters.groupby(self.class_col)['stimulation'].transform('count')
-        print('class_count unique is', df_allowed_voters['class_count'].unique())
         df_result = df_allowed_voters.drop_duplicates(self.class_col)
         df_result = df_result[df_result['class_count'].max() == df_result['class_count']]
 
@@ -425,7 +425,7 @@ class AIRS:
                 mc_match = pd.DataFrame(row).T
                 mc_match['stimulation'] = 0.0 #float('-inf')
                 mc_match['ARB'] = 0
-                MC[_class] = pd.concat([MC[_class], mc_match], axis=0)
+                MC[_class] = pd.concat([MC[_class], mc_match.copy()], axis=0)
             else:
                 # Select a MC candidate.
                 # NOTE: We choose the MC with the highest stimulation as a starting point.
@@ -450,7 +450,7 @@ class AIRS:
             mc_match['ARB'] = 1
             # The stimulation between MC candidate and the incoming antigene.
             #mc_match['stimulation'] = self._stimulate(cell=mc_match, pattern=antigene)
-            AB[_class] = pd.concat([AB[_class], mc_match], axis=0)  # add the mc_match to ARBs
+            AB[_class] = pd.concat([AB[_class], mc_match.copy()], axis=0)  # add the mc_match to ARBs
 
             stim = mc_match['stimulation']
             iterations = 0
@@ -466,10 +466,10 @@ class AIRS:
                 num_clones = 0
 
                 while num_clones < MAX_CLONES:
-                    clone, mutated = self._mutate(cell=mc_match)
+                    clone, mutated = self._mutate(cell=mc_match.copy())
 
                     if mutated:
-                        AB[_class] = pd.concat([AB[_class], clone], axis=0)
+                        AB[_class] = pd.concat([AB[_class], clone.copy()], axis=0)
                         num_clones += 1
 
                 # =============================================================
@@ -508,7 +508,7 @@ class AIRS:
                 MIN_STIM = min([MIN_STIM, min_stim_ab])
                 MAX_STIM = max([MAX_STIM, max_stim_ab])
 
-                if sum([AB[c].shape[0] for c in AB.keys()]) < 2:
+                if (sum([AB[c].shape[0] for c in AB.keys()]) < 2) or (MIN_STIM==MAX_STIM):
                     MIN_STIM = 1.0
                     MAX_STIM = 0.0                    
 
@@ -544,29 +544,30 @@ class AIRS:
             # get_values()[0]
             if mc_candidate['stimulation'].iloc[0] > float(mc_match.stimulation):
                 
-                mc_candidate_pattern = np.array(mc_candidate.drop([self.class_col, 'stimulation', 'resources'], axis=1))
-                if 'resources' in mc_match.columns:
-                    mc_match_pattern = np.array(mc_match.drop([self.class_col, 'stimulation', 'resources'], axis=1)) 
-                else: 
-                    mc_match_pattern = np.array(mc_match.drop([self.class_col, 'stimulation'], axis=1)) 
+                mc_candidate_pattern = mc_candidate[self.cols_features].to_numpy() 
+                mc_match_pattern = mc_match[self.cols_features].to_numpy() 
                 
                 # If the mc_candidate and the mc_match (parent mc) are within a threshold distance of each other, remove
                 # the mc_match, since mc_candidate in this case is closer to the antigene.
                 if self._affinity(vector1=mc_candidate_pattern, vector2=mc_match_pattern) < self.AFFINITY_THRESHOLD*self.AFFINITY_THRESHOLD_SCALAR:
-
-                    mc_class_compare = MC[_class].drop([self.class_col, 'ARB', 'stimulation'], axis=1)
-                    mc_class_compare = mc_class_compare.reindex(sorted(mc_class_compare.columns), axis=1)
-
-                    mc_match_compare = mc_match.drop([self.class_col, 'ARB', 'stimulation'], axis=1)
-                    mc_match_compare = mc_match_compare.reindex(sorted(mc_match_compare.columns), axis=1)
-
-                    mc_match_index = np.unique(np.where(mc_class_compare.to_numpy()==mc_match_compare.to_numpy())[0]).tolist()
+                    len_before_removal = MC[_class].shape[0] 
+                    MC[_class] = MC[_class].drop([mc_match.index[0]])
+                    len_after_removal = MC[_class].shape[0]
                     
-                    # need to drop mc match here
-                    # MC[_class].drop(np.where(MC[_class].iloc(4) == mc_match.iloc[4]), axis=0)
-                    MC[_class] = MC[_class].reset_index(drop=True).drop(mc_match_index, axis=0)
-                
-                MC[_class] = pd.concat([MC[_class], mc_candidate], axis=0)
+                    assert len_after_removal < len_before_removal
+                    # mc_class_compare = MC[_class][self.cols_features].to_numpy()
+                    # #mc_class_compare = mc_class_compare.reindex(sorted(mc_class_compare.columns), axis=1)
+
+                    # mc_match_compare = mc_match[self.cols_features].to_numpy()
+                    # #mc_match_compare = mc_match_compare.reindex(sorted(mc_match_compare.columns), axis=1)
+
+                    # mc_match_index = np.unique(np.where(mc_class_compare==mc_match_compare)[0]).tolist()
+                    
+                    # # need to drop mc match here
+                    # # MC[_class].drop(np.where(MC[_class].iloc(4) == mc_match.iloc[4]), axis=0)
+                    # MC[_class] = MC[_class].reset_index(drop=True).drop(mc_match_index, axis=0)
+                mc_candidate.index += MC[_class].index.max() + 1
+                MC[_class] = pd.concat([MC[_class], mc_candidate.copy()], axis=0)
 
         self.MC = MC
         self.AB = AB
@@ -575,6 +576,13 @@ class AIRS:
 
         self.MC_mass = pd.concat([MC.get(c) for c in MC.keys()], axis=0).reset_index(drop=True)
 
+        print("================")
+        print("DATA REDUCTION")
+        print("----------------")
+        for _class in range(self.CLASS_NUMBER):
+            print(f"Class {_class}: Train rows of {self.train_set[self.train_set[self.class_col]==_class].shape[0]} reduced to MC of {self.MC[_class].shape[0]} rows")
+        print("================")
+        
         n_correct = 0
         
         df_pred = pd.DataFrame({})
@@ -617,7 +625,7 @@ if __name__ == '__main__':
 
     # Mutation rate for ARBs
     MUTATION_RATE = 0.2
-    iris = False
+    iris = True
 
     if iris:
         data = pd.read_csv('data/iris.csv', names=['V1', 'V2', "V3", "V4", 'Class'])#, skiprows=skip)
@@ -730,7 +738,7 @@ if __name__ == '__main__':
         df_plot_tmp['Class'] = df_plot_tmp['Class'].map('Class{}'.format)
 
         g = sns.PairGrid(df_plot_tmp[plot_cols], hue="Class") #hue_kws={"cmap":['Blues', 'Greens']})
-        g.map_upper(sns.kdeplot, shade=True, shade_lowest=False, alpha=0.7)
+        g.map_upper(sns.kdeplot, shade=True, thresh=0.05, alpha=0.7)
         g.map_lower(sns.scatterplot, alpha=0.7) 
         g.map_diag(sns.distplot)
         plt.legend()
@@ -744,7 +752,7 @@ if __name__ == '__main__':
         df_plot_tmp['Class'] = df_plot_tmp['Class'].map('Class{}'.format)
 
         g = sns.PairGrid(df_plot_tmp[plot_cols], hue="Class") #hue_kws={"cmap":['Blues', 'Greens']})
-        g.map_upper(sns.kdeplot, shade=True, shade_lowest=False, alpha=0.7)
+        g.map_upper(sns.kdeplot, shade=True, thresh=0.05, alpha=0.7)
         g.map_lower(sns.scatterplot, alpha=0.7) 
         g.map_diag(sns.distplot)
         plt.legend()
