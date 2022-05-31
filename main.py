@@ -93,13 +93,16 @@ from typing import Dict, Tuple
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
 from sklearn import preprocessing
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix
 from scipy.spatial.distance import pdist
 from sklearn.neighbors import NearestNeighbors
 from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import TSNE
 import seaborn as sns
 import matplotlib.pyplot as plt
+
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 #os.system('python setup.py build_ext --inplace')
 #from func import cy_affinity
@@ -155,7 +158,7 @@ class AIRS:
         self.MC_INIT_RATE = mc_init_rate
         self.TOTAL_NUM_RESOURCES = total_num_resources
         self.AFFINITY_THRESHOLD_SCALAR = affinity_threshold_scalar
-        self.TEST_SIZE = test_size
+        self.test_size = test_size
         self.K = k
         self.MC = None
         self.AB = None
@@ -276,7 +279,7 @@ class AIRS:
         X = df.iloc[:, :-1]
         
         X_train, X_test, y_train, y_test = train_test_split(X, y,
-                                                            test_size=0.5,
+                                                            test_size=self.test_size,
                                                             random_state=42)
         
         train_set = pd.concat([X_train, y_train], axis=1)
@@ -608,11 +611,13 @@ class AIRS:
 
         print("Execution time : {:2.4f} seconds".format(time.time() - start))
         print("Accuracy : {:2.2f} %".format(n_correct * 100 / self.test_set.shape[0]))
-        print(f"Nonfraud fract : {sum(self.test_set.iloc[:, -1] == 0) / self.test_set.shape[0] * 100:.2f} %")
-        print(f"Fraud fract : {sum(self.test_set.iloc[:, -1] == 1) / self.test_set.shape[0] * 100:.2f} %")
         print(f"Confusion matrix is {confusion_matrix(df_pred.y_true, df_pred.y_pred)}")
         print(f"Reference confusion matrix is {confusion_matrix(df_pred.y_true, df_pred.y_pred_ref)}")
         print(f"KNN confusion matrix is {confusion_matrix(df_pred.y_true, df_pred.y_pred_knn)}")
+
+        print("Classification report")
+        print(classification_report(df_pred.y_true, df_pred.y_pred))
+
 
         return self.MC_mass, self.train_set, self.test_set
 
@@ -620,7 +625,6 @@ class AIRS:
 if __name__ == '__main__':
 
     # %%
-    ARRAY_SIZE = 30  # Features number
     MAX_ITER = 5  # Max iterations to stop training on a given antigene
 
     # Mutation rate for ARBs
@@ -666,95 +670,32 @@ if __name__ == '__main__':
     df_plot_train = pd.concat([df_train, mc], axis=0).reset_index(drop=True)
     df_plot = pd.concat([df_test, mc], axis=0).reset_index(drop=True)
     plot_cols = data.columns
-    tsne = TSNE(n_components=n_classes, verbose=1, perplexity=40, n_iter=300)
-    tsne_results = tsne.fit_transform(df_plot.drop(['ARB', 'stimulation', 'Class', 'resources'], axis=1))
-
-    df_plot['tsne-2d-one'] = tsne_results[:,0]
-    df_plot['tsne-2d-two'] = tsne_results[:,1]
     
-    plt.figure()
-    sns.scatterplot(
-        x="tsne-2d-one",
-        y="tsne-2d-two",
-        hue="Class",
-        palette=sns.color_palette("husl", n_classes*2),
-        data=df_plot,
-        alpha=0.3)
-    plt.title('Memory cells')
-    plt.show()
-    # %%
-    print('Done')
-    tsne = TSNE(n_components=n_classes, verbose=1, perplexity=5, n_iter=1000, learning_rate=20)
-    tsne_results = tsne.fit_transform(mc.drop(['ARB', 'stimulation', 'Class', 'resources'], axis=1))
-
-    mc['tsne-2d-one'] = tsne_results[:,0]
-    mc['tsne-2d-two'] = tsne_results[:,1]
-    
-    plt.figure()
-    sns.scatterplot(
-        x="tsne-2d-one",
-        y="tsne-2d-two",
-        hue="Class",
-        palette=sns.color_palette("hls", n_classes),
-        data=mc,
-        alpha=0.3)
-    plt.title('Memory cells')
-    plt.show()
-    # %%
-    plt.figure()
-    sns.scatterplot(
-        x="V1",
-        y="V2",
-        hue="Class",
-        palette=sns.color_palette("hls", n_classes*2),
-        data=df_plot,
-        alpha=0.3)
-    plt.title('Memory cells')
-    plt.show()
-    # %%
-    tsne = TSNE(n_components=n_classes, verbose=1, perplexity=20, n_iter=1000, learning_rate=5)
-    tsne_results = tsne.fit_transform(data)
-
-    data['tsne-2d-one'] = tsne_results[:,0]
-    data['tsne-2d-two'] = tsne_results[:,1]
-    
-    plt.figure()
-    sns.scatterplot(
-        x="tsne-2d-one",
-        y="tsne-2d-two",
-        hue="Class",
-        palette=sns.color_palette("hls", n_classes),
-        data=data,
-        alpha=0.3)
-    plt.title('Raw data')
-    plt.show()
-
-    # plt.figure()
-    # sns.pairplot(df_plot, hue="Class", cmap={"hls", 6}) , #markers=["o", "s", "D"])
-    # plt.show
     df_plot['Class'] = df_plot['Class'].astype(int)
-    for _class in range(n_classes):
-        df_plot_tmp = df_plot[df_plot.Class.isin([_class, _class + n_classes])].copy()
-        df_plot_tmp['Class'] = df_plot_tmp['Class'].map('Class{}'.format)
-
-        g = sns.PairGrid(df_plot_tmp[plot_cols], hue="Class") #hue_kws={"cmap":['Blues', 'Greens']})
-        g.map_upper(sns.kdeplot, shade=True, thresh=0.05, alpha=0.7)
-        g.map_lower(sns.scatterplot, alpha=0.7) 
-        g.map_diag(sns.distplot)
-        plt.legend()
-        plt.title('MC vs test set')
-        plt.show()
-
+    
     # %%
     df_plot_train['Class'] = df_plot_train['Class'].astype(int)
     for _class in range(n_classes):
         df_plot_tmp = df_plot_train[df_plot_train.Class.isin([_class, _class + n_classes])].copy()
         df_plot_tmp['Class'] = df_plot_tmp['Class'].map('Class{}'.format)
 
-        g = sns.PairGrid(df_plot_tmp[plot_cols], hue="Class") #hue_kws={"cmap":['Blues', 'Greens']})
+        g = sns.PairGrid(df_plot_tmp[plot_cols], hue="Class") 
         g.map_upper(sns.kdeplot, shade=True, thresh=0.05, alpha=0.7)
         g.map_lower(sns.scatterplot, alpha=0.7) 
         g.map_diag(sns.distplot)
+        g.fig.suptitle('MC vs train set', y=0.99) # y= some height>1
         plt.legend()
-        plt.title('MC vs train set')
+        plt.show()
+    
+    # %%
+    for _class in range(n_classes):
+        df_plot_tmp = df_plot[df_plot.Class.isin([_class, _class + n_classes])].copy()
+        df_plot_tmp['Class'] = df_plot_tmp['Class'].map('Class{}'.format)
+
+        g = sns.PairGrid(df_plot_tmp[plot_cols], hue="Class") 
+        g.map_upper(sns.kdeplot, shade=True, thresh=0.05, alpha=0.7)
+        g.map_lower(sns.scatterplot, alpha=0.7) 
+        g.map_diag(sns.distplot)
+        g.fig.suptitle('MC vs test set', y=0.99) # y= some height>1
+        plt.legend()
         plt.show()
