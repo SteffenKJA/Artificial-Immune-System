@@ -416,10 +416,12 @@ class AIRS(BaseEstimator, ClassifierMixin):
             
             if len(MC[_class]) == 0:
                 # If this is the first row in dataset
-                mc_match = pd.DataFrame(antigene, columns=self.column_names).T
+                mc_match = pd.DataFrame(antigene).T
+                mc_match.columns = self.column_names
                 mc_match['stimulation'] = 0.0 #float('-inf')
                 mc_match['ARB'] = 0
                 MC[_class] = pd.concat([MC[_class], mc_match.copy()], axis=0)
+                MC[_class] = MC[_class].reset_index(drop=True)
             else:
                 # Select a MC candidate.
                 # NOTE: We choose the MC with the highest stimulation as a starting point.
@@ -436,6 +438,7 @@ class AIRS(BaseEstimator, ClassifierMixin):
                 MC[_class]['stimulation'] = MC[_class].apply(self._stimulate, pattern=antigene, axis=1)  # NOTE: New algo line
                 
                 max_stim = MC[_class].stimulation.max()
+                MC[_class] = MC[_class].reset_index(drop=True)
                 mc_match = pd.DataFrame(MC[_class][MC[_class].stimulation == max_stim])
 
                 if mc_match.shape[0] > 1:
@@ -577,7 +580,12 @@ class AIRS(BaseEstimator, ClassifierMixin):
         
         # Use other classifier
         self.external_classifier = LogisticRegression()
-        self.MC_mass_train = self.MC_mass.drop([self.class_col, 'ARB', 'stimulation', 'resources'], axis=1)
+
+        if 'resources' in self.MC_mass.columns:
+            drop_cols = [self.class_col, 'ARB', 'stimulation', 'resources']
+        else:
+            drop_cols = [self.class_col, 'ARB', 'stimulation']
+        self.MC_mass_train = self.MC_mass.drop(drop_cols, axis=1)
         self.MC_mass_train = self.MC_mass_train.fillna(self.MC_mass_train.mean())
         self.external_classifier.fit(self.MC_mass_train, self.MC_mass[self.class_col])
         
@@ -684,39 +692,45 @@ if __name__ == '__main__':
 
     if hyper_par_tuning:
 
-        # log-uniform: understand as search over p = exp(x) by varying x
         opt = BayesSearchCV(
             AIRS(class_number=n_classes,
                 column_names=data.drop(['Class'], axis=1).columns.tolist()),
             {
                 'hyper_clonal_rate': Integer(20, 50),
-                'clonal_rate': Real(0.1, 1, prior='log-uniform'),
-                'mutation_rate': Real(0.1, 1, prior='log-uniform'),
+                'clonal_rate': Real(0.1, 1, prior='uniform'),
+                'mutation_rate': Real(0.1, 1, prior='uniform'),
                 'max_iter': Integer(5,10),
-                'mc_init_rate': Real(0.1, 1, prior='log-uniform'),
+                'mc_init_rate': Real(0.1, 0.4, prior='uniform'),
                 'total_num_resources': Integer(10, 30),
-                'affinity_threshold_scalar': Real(0.05, 0.1, prior='log-uniform'),
+                'affinity_threshold_scalar': Real(0.05, 0.1, prior='uniform'),
             },
+            cv=3,
             n_iter=4,
-            random_state=0,
-            #optimizer_kwargs={'column_names': data.drop(['Class'], axis=1).columns.tolist()}
+            random_state=0
         )
 
         # executes bayesian optimization
         _ = opt.fit(X_train.to_numpy(), y_train.to_numpy())
 
         # model can be saved, used for predictions or scoring
-        print(opt.score(X_test, y_test))
+        print("Optimal bayes hyperpars score", opt.score(X_test, y_test))
 
-    airs = AIRS(hyper_clonal_rate=100,
-                clonal_rate=0.8,
-                mutation_rate=0.6,
-                max_iter=10,
-                class_number=n_classes,
-                mc_init_rate=0.2,
-                total_num_resources=30,
-                affinity_threshold_scalar=0.05,
-                column_names=data.drop(['Class'], axis=1).columns.tolist())
+        hyper_pars = opt.best_params_
+        print(f"Best hyperpars found to be {hyper_pars}")
+    else:
+        hyper_pars = {
+            'hyper_clonal_rate': 100,
+            'clonal_rate': 0.8,
+            'mutation_rate': 0.6,
+            'max_iter': 10,
+            'mc_init_rate': 0.2,
+            'total_num_resources': 30,
+            'affinity_threshold_scalar': 0.05
+        }
+        
+    airs = AIRS(class_number=n_classes,
+                column_names=data.drop(['Class'], axis=1).columns.tolist(),
+                **hyper_pars)
     
     airs.fit(X=X_train.to_numpy(), y=y_train.to_numpy())
 
@@ -730,7 +744,32 @@ if __name__ == '__main__':
         
         sql_db = sqlite_db(path='ais.db')
         sql_db.conn_to_db()
+        
+        # ---------------------------- Write MC set to db ---------------------------- #
+    
         mc.to_sql('mc_index_1', sql_db.conn, if_exists='replace', index=False)
+ 
+        # --------------------------- Write hyperopts to db -------------------------- #
+
+        hyper_opt_table_schema = {
+            'mc_set_index': 'INTEGER',
+            'hyper_clonal_rate': 'REAL',
+            'clonal_rate': 'REAL',
+            'mutation_rate': 'REAL',
+            'max_iter': 'INTEGER',
+            'mc_init_rate': 'REAL',
+            'total_num_resources': 'INTEGER',
+            'affinity_threshold_scalar': 'REAL'
+        }
+        hyper_pars.update({'mc_set_index': 1})
+
+        sql_db.create_db_if_exists('airs_hyper_pars', schema=hyper_opt_table_schema) 
+        sql_db.append_row_to_table(input_dict=hyper_pars, table_name='airs_hyper_pars')
+
+        # -------------------- Write performance evaluation to db -------------------- #
+        
+        # ---------------------------- Close db connection --------------------------- #
+        sql_db.close_conn()
 
     # %%
     mc.loc[:, 'Class'] += n_classes
