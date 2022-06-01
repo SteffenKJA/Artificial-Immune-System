@@ -1,8 +1,6 @@
 import sqlite3
 from typing import Dict
 
-from numpy import place
-
 
 class sqlite_db():
 
@@ -26,8 +24,6 @@ class sqlite_db():
         execution_string = execution_string[:-1] + ")" 
         print(execution_string)
         self.cursor.execute(execution_string)
-
-        # Commit your changes in the database
         self.conn.commit()
 
     def append_row_to_table(self, input_dict: Dict, table_name: str):

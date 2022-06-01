@@ -396,11 +396,10 @@ class AIRS(BaseEstimator, ClassifierMixin):
         # affinity_threshold_scalar
         self.AFFINITY_THRESHOLD_SCALED = self.affinity_threshold * self.affinity_threshold_scalar
 
-        # Create two dicts for the Memory Cells and Antibodies, with two
+        # Create two dicts for the Memory Cells and Artificial Recognition Balls (ARB or AB), with two
         # empty class slots, nonfraud and fraud, labelled 0 and 1.
         MC = {_class_int: pd.DataFrame() for _class_int in range(self.class_number)}
         AB = {_class_int: pd.DataFrame() for _class_int in range(self.class_number)}
-        self.mutated_cell_count = {_class_int: 0 for _class_int in range(self.class_number)} 
         self.remove_mc_cell_aff_threshold = {_class_int: 0 for _class_int in range(self.class_number)}
 
         # MC Initialisation
@@ -540,7 +539,6 @@ class AIRS(BaseEstimator, ClassifierMixin):
 
             # get_values()[0]
             if mc_candidate['stimulation'].iloc[0] > float(mc_match.stimulation):
-                self.mutated_cell_count[_class] += 1 
                 mc_candidate_pattern = mc_candidate[self.column_names].to_numpy() 
                 mc_match_pattern = mc_match[self.column_names].to_numpy() 
                 
@@ -596,7 +594,7 @@ class AIRS(BaseEstimator, ClassifierMixin):
         print("----------------")
         for _class in range(self.class_number):
             print(f"Class {_class}: Train rows of {sum(y==_class)} reduced to MC of {self.MC[_class].shape[0]} rows")
-            print(f"Class {_class}: {self.mutated_cell_count[_class]} mutated cells added to MC")
+            print(f"Class {_class}: {self.MC[_class].ARB.sum()} mutated cells added to MC")
             print(f"Class {_class}: {self.remove_mc_cell_aff_threshold[_class]} removed cells from MC due to crossed affinity threshold")
         print("================")
         
@@ -663,7 +661,7 @@ if __name__ == '__main__':
     iris = True
     plt_test_set_mc = False
     hyper_par_tuning = False
-    write_to_db = True
+    write_to_db = False
 
     if iris:
         data = pd.read_csv('data/iris.csv', names=['V1', 'V2', "V3", "V4", 'Class'])#, skiprows=skip)
@@ -749,7 +747,7 @@ if __name__ == '__main__':
     
         mc.to_sql('mc_index_1', sql_db.conn, if_exists='replace', index=False)
  
-        # --------------------------- Write hyperopts to db -------------------------- #
+        # --------------------------- Write hyperpars to db -------------------------- #
 
         hyper_opt_table_schema = {
             'mc_set_index': 'INTEGER',
@@ -771,6 +769,9 @@ if __name__ == '__main__':
         # ---------------------------- Close db connection --------------------------- #
         sql_db.close_conn()
 
+    # ---------------------------------------------------------------------------- #
+    #                             MC SET VISUALIZATION                             #
+    # ---------------------------------------------------------------------------- #
     # %%
     mc.loc[:, 'Class'] += n_classes
     df_plot_train = pd.concat([train_set, mc], axis=0).reset_index(drop=True)
