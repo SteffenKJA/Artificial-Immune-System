@@ -334,16 +334,20 @@ class AIRS(BaseEstimator, ClassifierMixin):
         :param _class: the class of the ARBs
         :return: The ARB with the lower amount of resources and its index
         """
-        min_res = 1.0
-        arb = None
-        arb_index = None
-        # TODO: Change to simple min selection in pandas 
-        for i in range(len(AB[_class])):
-            if AB[_class].iloc[i, :].resources <= min_res:
-                min_res = AB[_class].iloc[i, :].resources
-                arb = AB[_class].iloc[i, :]
-                arb_index = i
+        # min_res = 1.0
+        # arb = None
+        # arb_index = None
+        # # TODO: Change to simple min selection in pandas 
+        # for i in range(len(AB[_class])):
+        #     if AB[_class].iloc[i, :].resources <= min_res:
+        #         min_res = AB[_class].iloc[i, :].resources
+        #         arb = AB[_class].iloc[i, :]
+        #         arb_index = i
 
+        # mc_match_index = np.unique(np.where(mc_class_compare==mc_match_compare)[0]).tolist()
+        arb_index = np.unique(np.where(AB[_class].resources==AB[_class].resources.min())[0]).tolist()[0]   
+        arb = AB[_class].iloc[arb_index, :]
+        
         return arb, arb_index
 
     def _get_mc_candidate(self, AB: Dict, _class: int) -> pd.DataFrame:
@@ -658,10 +662,10 @@ def create_train_test_split(df: pd.DataFrame, test_size: float) -> Tuple[pd.Data
 if __name__ == '__main__':
 
     # %%
-    iris = True
+    iris = False
     plt_test_set_mc = False
-    hyper_par_tuning = False
-    write_to_db = False
+    hyper_par_tuning = True
+    write_to_db = True
 
     if iris:
         data = pd.read_csv('data/iris.csv', names=['V1', 'V2', "V3", "V4", 'Class'])#, skiprows=skip)
@@ -679,7 +683,7 @@ if __name__ == '__main__':
         data_1 = data[data['Class']==1].copy()#.iloc[:300, :]
         data_0 = data[data['Class']==0].copy()
         
-        data = pd.concat([data_0.sample(data_1.shape[0]*1), data_1], axis=0)
+        data = pd.concat([data_0.sample(data_1.shape[0]*3), data_1], axis=0)
         n_classes = 2
 
     plt.figure()
@@ -698,12 +702,12 @@ if __name__ == '__main__':
                 'clonal_rate': Real(0.1, 1, prior='uniform'),
                 'mutation_rate': Real(0.1, 1, prior='uniform'),
                 'max_iter': Integer(5,10),
-                'mc_init_rate': Real(0.1, 0.4, prior='uniform'),
+                'mc_init_rate': Real(0.1, 0.5, prior='uniform'),
                 'total_num_resources': Integer(10, 30),
                 'affinity_threshold_scalar': Real(0.05, 0.1, prior='uniform'),
             },
-            cv=3,
-            n_iter=4,
+            cv=5,
+            n_iter=200,
             random_state=0
         )
 
